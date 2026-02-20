@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1020865656116",
+    "project_id": "canevision-1cb59",
+    "storage_bucket": "canevision-1cb59.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1020865656116:android:60d2be70fda08896926161",
+        "android_client_info": {
+          "package_name": "com.example.canevisonm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAbIgl2YWkVmlkuEySpya31HUK2xfDz02g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
