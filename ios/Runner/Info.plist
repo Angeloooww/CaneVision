@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+<string>CaneVision needs camera access to scan sugarcane</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>CaneVision needs photo library access to upload sugarcane images</string>
 </dict>
 </plist>
