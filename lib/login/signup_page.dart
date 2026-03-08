@@ -69,8 +69,13 @@ class _SignupPageState extends State<SignupPage> {
         _fullNameController.text.trim(),
       );
 
+      // Step 4: Sign out immediately — Firebase auto-logs in after
+      // createUserWithEmailAndPassword, so we sign out to force the
+      // user to log in manually. AuthWrapper will redirect to LoginPage.
+      await _auth.signOut();
+
       if (mounted) {
-        _showSuccess('Account created successfully!');
+        _showSuccess('Account created! Please log in.');
         // Go back to login page after a short delay
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) Navigator.pop(context);
