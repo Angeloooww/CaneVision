@@ -110,14 +110,21 @@ class _LoginPageState extends State<LoginPage> {
               child: Row(
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF27AE60),
-                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF11BD51), width: 2),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.agriculture,
-                        color: Colors.white, size: 22),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        width: 40,
+                        height: 40,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 10),
                   const Text(
@@ -290,10 +297,10 @@ class _LoginPageState extends State<LoginPage> {
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : _handleLogin,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2B2FD9),
+                          backgroundColor: const Color(0xFF11BD51),
                           foregroundColor: Colors.white,
                           disabledBackgroundColor:
-                              const Color(0xFF2B2FD9).withOpacity(0.6),
+                              const Color(0xFF11BD51).withOpacity(0.6),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
