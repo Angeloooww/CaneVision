@@ -141,7 +141,7 @@ class _MainPageState extends State<MainPage> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: Image.asset(
-                        'assets/images/logo.png',
+                        'assets/images/logo.jpeg',
                         width: 40,
                         height: 40,
                         fit: BoxFit.cover,
@@ -459,6 +459,7 @@ class _MainPageState extends State<MainPage> {
                                         farmerName:
                                             data['fullName'] ?? '',
                                         farmId: data['farmId'] ?? '',
+                                        farmerDocId: doc.id,
                                       ),
                                       transitionsBuilder: (_,
                                               animation, __, child) =>
