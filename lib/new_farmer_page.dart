@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -15,6 +16,9 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
 
+  String? _phoneError;
+  String? _emailError;
+
   bool _isLoading = false;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -29,8 +33,26 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
     super.dispose();
   }
 
+  // ── Validators ────────────────────────────────────────────────
+  bool _validatePhone(String value) {
+    final phone = value.trim();
+    final phRegex = RegExp(r'^09\d{9}$');
+    return phRegex.hasMatch(phone);
+  }
+
+  bool _validateEmail(String value) {
+    final emailRegex = RegExp(r'^[\w\.\+\-]+@[\w\-]+\.[a-zA-Z]{2,}$');
+    return emailRegex.hasMatch(value.trim());
+  }
+
   // ── Save Farmer to Firestore ──────────────────────────────────
   Future<void> _saveFarmer() async {
+    // Reset inline errors
+    setState(() {
+      _phoneError = null;
+      _emailError = null;
+    });
+
     if (_fullNameController.text.trim().isEmpty ||
         _farmIdController.text.trim().isEmpty ||
         _phoneController.text.trim().isEmpty ||
@@ -39,12 +61,25 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
       return;
     }
 
+    bool hasError = false;
+
+    if (!_validatePhone(_phoneController.text)) {
+      setState(() => _phoneError = 'Enter a valid PH number (e.g. 09XXXXXXXXX)');
+      hasError = true;
+    }
+
+    if (!_validateEmail(_emailController.text)) {
+      setState(() => _emailError = 'Enter a valid email address');
+      hasError = true;
+    }
+
+    if (hasError) return;
+
     setState(() => _isLoading = true);
 
     try {
       final uid = _auth.currentUser?.uid ?? '';
 
-      // Save new farmer document to Firestore "farmers" collection
       await _firestore.collection('farmers').add({
         'fullName': _fullNameController.text.trim(),
         'farmId': _farmIdController.text.trim(),
@@ -67,7 +102,6 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
             margin: const EdgeInsets.all(16),
           ),
         );
-        // Go back to main page — farmer will appear automatically via StreamBuilder
         Navigator.pop(context);
       }
     } catch (e) {
@@ -203,8 +237,7 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
                           const SizedBox(height: 20),
 
                           // Full Name
-                          _buildFieldLabel(
-                              'Full Name', Icons.person_outline),
+                          _buildFieldLabel('Full Name', Icons.person_outline),
                           const SizedBox(height: 8),
                           _buildTextField(
                             controller: _fullNameController,
@@ -215,8 +248,7 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
                           const SizedBox(height: 18),
 
                           // Farm ID
-                          _buildFieldLabel(
-                              'Farm ID', Icons.tag_outlined),
+                          _buildFieldLabel('Farm ID', Icons.tag_outlined),
                           const SizedBox(height: 8),
                           _buildTextField(
                             controller: _farmIdController,
@@ -226,25 +258,40 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
                           const SizedBox(height: 18),
 
                           // Phone
-                          _buildFieldLabel(
-                              'Phone Number', Icons.phone_outlined),
+                          _buildFieldLabel('Phone Number', Icons.phone_outlined),
                           const SizedBox(height: 8),
                           _buildTextField(
                             controller: _phoneController,
-                            hint: 'e.g. 09723726322',
+                            hint: 'e.g. 09XXXXXXXXX',
                             keyboardType: TextInputType.phone,
+                            // ── Only allow digits, max 11 characters ──
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(11),
+                            ],
+                            errorText: _phoneError,
+                            onChanged: (val) {
+                              if (_phoneError != null) {
+                                setState(() => _phoneError = null);
+                              }
+                            },
                           ),
 
                           const SizedBox(height: 18),
 
                           // Email
-                          _buildFieldLabel(
-                              'Email Address', Icons.email_outlined),
+                          _buildFieldLabel('Email Address', Icons.email_outlined),
                           const SizedBox(height: 8),
                           _buildTextField(
                             controller: _emailController,
                             hint: 'Enter farmer\'s email address',
                             keyboardType: TextInputType.emailAddress,
+                            errorText: _emailError,
+                            onChanged: (val) {
+                              if (_emailError != null) {
+                                setState(() => _emailError = null);
+                              }
+                            },
                           ),
                         ],
                       ),
@@ -311,19 +358,25 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
     required TextEditingController controller,
     required String hint,
     TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+    String? errorText,
+    ValueChanged<String>? onChanged,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      onChanged: onChanged,
       style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle:
-            const TextStyle(fontSize: 13, color: Color(0xFFBBBBBB)),
+        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFFBBBBBB)),
         filled: true,
         fillColor: const Color(0xFFF7F7F7),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        errorText: errorText,
+        errorStyle: const TextStyle(fontSize: 11, color: Colors.redAccent),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none),
@@ -336,6 +389,14 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
           borderRadius: BorderRadius.circular(10),
           borderSide:
               const BorderSide(color: Color(0xFF27AE60), width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
         ),
       ),
     );
