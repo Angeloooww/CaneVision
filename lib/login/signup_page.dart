@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../admin/admin_signup_page.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -221,7 +222,19 @@ class _SignupPageState extends State<SignupPage> {
 
                     const SizedBox(height: 40),
 
-                    // Tab Toggle
+                    // ── Sign Up label ─────────────────────────────
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Sign Up As',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF888888))),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // ── Grader / Admin Toggle ─────────────────────
                     Container(
                       height: 46,
                       decoration: BoxDecoration(
@@ -237,22 +250,7 @@ class _SignupPageState extends State<SignupPage> {
                       ),
                       child: Row(
                         children: [
-                          // Login tab
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () => Navigator.pop(context),
-                              child: Container(
-                                margin: const EdgeInsets.all(4),
-                                alignment: Alignment.center,
-                                child: const Text('Login',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF888888))),
-                              ),
-                            ),
-                          ),
-                          // Sign up tab — active
+                          // Grader — active
                           Expanded(
                             child: Container(
                               margin: const EdgeInsets.all(4),
@@ -261,11 +259,41 @@ class _SignupPageState extends State<SignupPage> {
                                 borderRadius: BorderRadius.circular(22),
                               ),
                               alignment: Alignment.center,
-                              child: const Text('Sign up',
+                              child: const Text('Grader',
                                   style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
                                       color: Colors.white)),
+                            ),
+                          ),
+                          // Admin — navigate to AdminSignupPage
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  PageRouteBuilder(
+                                    pageBuilder: (_, animation, __) =>
+                                        const AdminSignupPage(),
+                                    transitionsBuilder:
+                                        (_, animation, __, child) =>
+                                            FadeTransition(
+                                                opacity: animation,
+                                                child: child),
+                                    transitionDuration:
+                                        const Duration(milliseconds: 250),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                margin: const EdgeInsets.all(4),
+                                alignment: Alignment.center,
+                                child: const Text('Admin',
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF888888))),
+                              ),
                             ),
                           ),
                         ],

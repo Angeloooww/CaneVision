@@ -18,7 +18,6 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
 
   String? _phoneError;
   String? _emailError;
-
   bool _isLoading = false;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -35,9 +34,8 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
 
   // ── Validators ────────────────────────────────────────────────
   bool _validatePhone(String value) {
-    final phone = value.trim();
     final phRegex = RegExp(r'^09\d{9}$');
-    return phRegex.hasMatch(phone);
+    return phRegex.hasMatch(value.trim());
   }
 
   bool _validateEmail(String value) {
@@ -47,7 +45,6 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
 
   // ── Save Farmer to Firestore ──────────────────────────────────
   Future<void> _saveFarmer() async {
-    // Reset inline errors
     setState(() {
       _phoneError = null;
       _emailError = null;
@@ -64,7 +61,8 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
     bool hasError = false;
 
     if (!_validatePhone(_phoneController.text)) {
-      setState(() => _phoneError = 'Enter a valid PH number (e.g. 09XXXXXXXXX)');
+      setState(() =>
+          _phoneError = 'Enter a valid PH number (e.g. 09XXXXXXXXX)');
       hasError = true;
     }
 
@@ -80,6 +78,7 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
     try {
       final uid = _auth.currentUser?.uid ?? '';
 
+      // Save to Firestore farmers collection
       await _firestore.collection('farmers').add({
         'fullName': _fullNameController.text.trim(),
         'farmId': _farmIdController.text.trim(),
@@ -95,13 +94,14 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
           SnackBar(
             content: Text(
                 '${_fullNameController.text.trim()} added successfully!'),
-            backgroundColor: const Color(0xFF27AE60),
+            backgroundColor: const Color(0xFF11BD51),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10)),
             margin: const EdgeInsets.all(16),
           ),
         );
+        // Pop back to main page — farmer appears automatically via StreamBuilder
         Navigator.pop(context);
       }
     } catch (e) {
@@ -117,8 +117,8 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
         content: Text(message),
         backgroundColor: Colors.redAccent,
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
       ),
     );
@@ -141,13 +141,14 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFF11BD51), width: 2),
+                      border: Border.all(
+                          color: const Color(0xFF11BD51), width: 2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: Image.asset(
-                        'assets/images/logo.png',
+                        'assets/images/logo.jpeg',
                         width: 40,
                         height: 40,
                         fit: BoxFit.cover,
@@ -172,7 +173,7 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
                   children: [
                     const SizedBox(height: 10),
 
-                    // Back button + title
+                    // ── Back + Title ──────────────────────────────
                     Row(
                       children: [
                         GestureDetector(
@@ -231,13 +232,13 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
                           const Text(
                               'This farmer will appear in the Registered Farmers list',
                               style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF888888))),
+                                  fontSize: 11, color: Color(0xFF888888))),
 
                           const SizedBox(height: 20),
 
                           // Full Name
-                          _buildFieldLabel('Full Name', Icons.person_outline),
+                          _buildFieldLabel(
+                              'Full Name', Icons.person_outline),
                           const SizedBox(height: 8),
                           _buildTextField(
                             controller: _fullNameController,
@@ -258,13 +259,13 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
                           const SizedBox(height: 18),
 
                           // Phone
-                          _buildFieldLabel('Phone Number', Icons.phone_outlined),
+                          _buildFieldLabel(
+                              'Phone Number', Icons.phone_outlined),
                           const SizedBox(height: 8),
                           _buildTextField(
                             controller: _phoneController,
                             hint: 'e.g. 09XXXXXXXXX',
                             keyboardType: TextInputType.phone,
-                            // ── Only allow digits, max 11 characters ──
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
                               LengthLimitingTextInputFormatter(11),
@@ -280,7 +281,8 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
                           const SizedBox(height: 18),
 
                           // Email
-                          _buildFieldLabel('Email Address', Icons.email_outlined),
+                          _buildFieldLabel(
+                              'Email Address', Icons.email_outlined),
                           const SizedBox(height: 8),
                           _buildTextField(
                             controller: _emailController,
@@ -370,13 +372,15 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
       style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFFBBBBBB)),
+        hintStyle:
+            const TextStyle(fontSize: 13, color: Color(0xFFBBBBBB)),
         filled: true,
         fillColor: const Color(0xFFF7F7F7),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         errorText: errorText,
-        errorStyle: const TextStyle(fontSize: 11, color: Colors.redAccent),
+        errorStyle:
+            const TextStyle(fontSize: 11, color: Colors.redAccent),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none),
@@ -388,15 +392,17 @@ class _NewFarmerPageState extends State<NewFarmerPage> {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide:
-              const BorderSide(color: Color(0xFF27AE60), width: 1.5),
+              const BorderSide(color: Color(0xFF11BD51), width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
+          borderSide:
+              const BorderSide(color: Colors.redAccent, width: 1.5),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
+          borderSide:
+              const BorderSide(color: Colors.redAccent, width: 1.5),
         ),
       ),
     );

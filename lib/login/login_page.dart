@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'signup_page.dart';
+import '../admin/admin_login_page.dart';
 import '../main_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -43,6 +45,21 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (mounted) {
+        // Check role — graders cannot use admin credentials
+        final uid = _auth.currentUser!.uid;
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .get();
+        final role = (doc.data()?['role'] ?? '').toString();
+
+        if (role == 'Admin') {
+          await _auth.signOut();
+          _showError('This is an Admin account. Please use the Admin login.');
+          setState(() => _isLoading = false);
+          return;
+        }
+
         // Navigate to MainPage and remove login from the stack
         Navigator.pushReplacement(
           context,
@@ -189,7 +206,19 @@ class _LoginPageState extends State<LoginPage> {
 
                     const SizedBox(height: 40),
 
-                    // Tab Toggle
+                    // ── Log In label ──────────────────────────────
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Log In As',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF888888))),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // ── Grader / Admin Toggle ─────────────────────
                     Container(
                       height: 46,
                       decoration: BoxDecoration(
@@ -205,7 +234,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       child: Row(
                         children: [
-                          // Login tab — active
+                          // Grader — active
                           Expanded(
                             child: Container(
                               margin: const EdgeInsets.all(4),
@@ -214,14 +243,14 @@ class _LoginPageState extends State<LoginPage> {
                                 borderRadius: BorderRadius.circular(22),
                               ),
                               alignment: Alignment.center,
-                              child: const Text('Login',
+                              child: const Text('Grader',
                                   style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
                                       color: Colors.white)),
                             ),
                           ),
-                          // Sign up tab
+                          // Admin — navigate to AdminLoginPage
                           Expanded(
                             child: GestureDetector(
                               onTap: () {
@@ -229,7 +258,7 @@ class _LoginPageState extends State<LoginPage> {
                                   context,
                                   PageRouteBuilder(
                                     pageBuilder: (_, animation, __) =>
-                                        const SignupPage(),
+                                        const AdminLoginPage(),
                                     transitionsBuilder:
                                         (_, animation, __, child) =>
                                             FadeTransition(
@@ -243,7 +272,7 @@ class _LoginPageState extends State<LoginPage> {
                               child: Container(
                                 margin: const EdgeInsets.all(4),
                                 alignment: Alignment.center,
-                                child: const Text('Sign up',
+                                child: const Text('Admin',
                                     style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w600,
@@ -286,6 +315,40 @@ class _LoginPageState extends State<LoginPage> {
                         onPressed: () => setState(
                             () => _obscurePassword = !_obscurePassword),
                       ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // ── Don't have an account ─────────────────────
+                    Row(
+                      children: [
+                        const Text("Don't have an account? ",
+                            style: TextStyle(
+                                fontSize: 12, color: Color(0xFF888888))),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              PageRouteBuilder(
+                                pageBuilder: (_, animation, __) =>
+                                    const SignupPage(),
+                                transitionsBuilder:
+                                    (_, animation, __, child) =>
+                                        FadeTransition(
+                                            opacity: animation,
+                                            child: child),
+                                transitionDuration:
+                                    const Duration(milliseconds: 250),
+                              ),
+                            );
+                          },
+                          child: const Text('Sign up here',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF11BD51),
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ],
                     ),
 
                     const SizedBox(height: 32),
