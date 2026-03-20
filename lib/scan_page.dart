@@ -672,26 +672,7 @@ class _ScanPageState extends State<ScanPage> {
 
             const SizedBox(height: 14),
 
-            // ── Stats Row ─────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  _buildStatCard(
-                      label: "Today's Score",
-                      value: '--',
-                      showArrow: false),
-                  const SizedBox(width: 10),
-                  _buildStatCard(
-                      label: 'Avg Grade', value: '--', showArrow: true),
-                  const SizedBox(width: 10),
-                  _buildStatCard(
-                      label: 'Farmers', value: '--', showArrow: false),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 14),
+            
 
             // ── Scanning For Card ─────────────────────────────────
             Padding(
