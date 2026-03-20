@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'analysis_page.dart'; // imports kGradeLookup and gradeQuality
 
-class CertificatePage extends StatelessWidget {
+class CertificatePage extends StatefulWidget {
   final String farmerName;
   final String farmId;
   final String farmerDocId;
@@ -23,6 +25,51 @@ class CertificatePage extends StatelessWidget {
     required this.remarkCode,
     required this.remarkFull,
   });
+
+  @override
+  State<CertificatePage> createState() => _CertificatePageState();
+}
+
+class _CertificatePageState extends State<CertificatePage> {
+  String _graderName = '';
+  String _graderEmail = '';
+  bool _loadingGrader = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchGraderInfo();
+  }
+
+  // Fetch logged-in grader's name and email from Firestore
+  Future<void> _fetchGraderInfo() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (doc.exists && mounted) {
+          setState(() {
+            _graderName = doc.data()?['fullName'] ?? user.displayName ?? 'Unknown';
+            _graderEmail = doc.data()?['email'] ?? user.email ?? '';
+          });
+        }
+      }
+    } catch (_) {
+      // fallback to Auth display name if Firestore fails
+      final user = FirebaseAuth.instance.currentUser;
+      if (mounted) {
+        setState(() {
+          _graderName = user?.displayName ?? 'Unknown';
+          _graderEmail = user?.email ?? '';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loadingGrader = false);
+    }
+  }
 
   String get _certId {
     final rand = Random();
@@ -54,7 +101,7 @@ class CertificatePage extends StatelessWidget {
     final certId = _certId;
 
     // Resolve advisory from the same lookup table used in AnalysisPage
-    final gradeKey = grade.toUpperCase();
+    final gradeKey = widget.grade.toUpperCase();
     final info = kGradeLookup[gradeKey] ?? kGradeLookup['FF']!;
     final String advisory = info['advisory'] as String;
 
@@ -178,11 +225,52 @@ class CertificatePage extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            _buildInfoRow('Name', farmerName),
+                            _buildInfoRow('Name', widget.farmerName),
                             const SizedBox(height: 6),
-                            _buildInfoRow('Farm ID', farmId),
+                            _buildInfoRow('Farm ID', widget.farmId),
                             const SizedBox(height: 6),
                             _buildInfoRow('Inspection Date', _today),
+                          ],
+                        ),
+                      ),
+
+                      const Divider(color: Color(0xFFF0F0F0), height: 1),
+
+                      // ── Graded By ─────────────────────────────
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: const [
+                                Icon(Icons.badge_outlined,
+                                    size: 15, color: Color(0xFF555555)),
+                                SizedBox(width: 6),
+                                Text('Graded By',
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1A1A1A))),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            _loadingGrader
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                        color: Color(0xFF11BD51),
+                                        strokeWidth: 2),
+                                  )
+                                : Column(
+                                    children: [
+                                      _buildInfoRow(
+                                          'Quality Grader', _graderName),
+                                      const SizedBox(height: 6),
+                                      _buildInfoRow('Email', _graderEmail),
+                                    ],
+                                  ),
                           ],
                         ),
                       ),
@@ -210,12 +298,12 @@ class CertificatePage extends StatelessWidget {
                                 crossAxisAlignment:
                                     CrossAxisAlignment.start,
                                 children: [
-                                  Text(grade,
+                                  Text(widget.grade,
                                       style: const TextStyle(
                                           fontSize: 32,
                                           fontWeight: FontWeight.bold,
                                           color: Colors.white)),
-                                  Text(quality,
+                                  Text(widget.quality,
                                       style: const TextStyle(
                                           fontSize: 13,
                                           color: Colors.white70)),
@@ -261,7 +349,7 @@ class CertificatePage extends StatelessWidget {
                                               fontSize: 11,
                                               color: Color(0xFF888888))),
                                       const SizedBox(height: 4),
-                                      Text('$trashDiscount%',
+                                      Text('${widget.trashDiscount}%',
                                           style: const TextStyle(
                                               fontSize: 22,
                                               fontWeight: FontWeight.bold,
@@ -281,13 +369,13 @@ class CertificatePage extends StatelessWidget {
                                               fontSize: 11,
                                               color: Color(0xFF888888))),
                                       const SizedBox(height: 4),
-                                      Text(remarkCode,
+                                      Text(widget.remarkCode,
                                           style: const TextStyle(
                                               fontSize: 22,
                                               fontWeight: FontWeight.bold,
                                               color: Color(0xFF1A1A1A))),
                                       const SizedBox(height: 2),
-                                      Text(remarkFull,
+                                      Text(widget.remarkFull,
                                           style: const TextStyle(
                                               fontSize: 11,
                                               color: Color(0xFF888888),
