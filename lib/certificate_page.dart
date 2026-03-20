@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'analysis_page.dart'; // imports kGradeLookup and gradeQuality
 
 class CertificatePage extends StatelessWidget {
   final String farmerName;
@@ -34,8 +35,8 @@ class CertificatePage extends StatelessWidget {
   String get _today {
     final now = DateTime.now();
     const months = [
-      'January','February','March','April','May','June',
-      'July','August','September','October','November','December'
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
     ];
     return '${months[now.month - 1]} ${now.day}, ${now.year}';
   }
@@ -52,6 +53,11 @@ class CertificatePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final certId = _certId;
 
+    // Resolve advisory from the same lookup table used in AnalysisPage
+    final gradeKey = grade.toUpperCase();
+    final info = kGradeLookup[gradeKey] ?? kGradeLookup['FF']!;
+    final String advisory = info['advisory'] as String;
+
     return Scaffold(
       backgroundColor: const Color(0xFFE8F8EF),
       body: SafeArea(
@@ -59,7 +65,8 @@ class CertificatePage extends StatelessWidget {
           children: [
             // ── Top App Bar ───────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Row(
                 children: [
                   Container(
@@ -73,7 +80,7 @@ class CertificatePage extends StatelessWidget {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: Image.asset(
-                        'assets/images/logo.jpeg',
+                        'assets/images/logo.png',
                         width: 40,
                         height: 40,
                         fit: BoxFit.cover,
@@ -93,8 +100,8 @@ class CertificatePage extends StatelessWidget {
             // ── Certificate Card ──────────────────────────────────
             Expanded(
               child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 4),
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
@@ -118,10 +125,12 @@ class CertificatePage extends StatelessWidget {
                               width: 56,
                               height: 56,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF11BD51).withOpacity(0.12),
+                                color: const Color(0xFF11BD51)
+                                    .withOpacity(0.12),
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                    color: const Color(0xFF11BD51), width: 2),
+                                    color: const Color(0xFF11BD51),
+                                    width: 2),
                               ),
                               child: const Icon(Icons.workspace_premium,
                                   color: Color(0xFF11BD51), size: 28),
@@ -133,13 +142,16 @@ class CertificatePage extends StatelessWidget {
                                     fontWeight: FontWeight.bold,
                                     color: Color(0xFF1A1A1A))),
                             const SizedBox(height: 4),
-                            const Text('Sugarcane Quality Assessment Report',
+                            const Text(
+                                'Sugarcane Quality Assessment Report',
                                 style: TextStyle(
-                                    fontSize: 11, color: Color(0xFF888888))),
+                                    fontSize: 11,
+                                    color: Color(0xFF888888))),
                             const SizedBox(height: 4),
                             Text('Certificate ID: $certId',
                                 style: const TextStyle(
-                                    fontSize: 10, color: Color(0xFFAAAAAA))),
+                                    fontSize: 10,
+                                    color: Color(0xFFAAAAAA))),
                           ],
                         ),
                       ),
@@ -195,7 +207,8 @@ class CertificatePage extends StatelessWidget {
                                   color: Colors.white, size: 28),
                               const SizedBox(width: 12),
                               Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
                                 children: [
                                   Text(grade,
                                       style: const TextStyle(
@@ -290,6 +303,50 @@ class CertificatePage extends StatelessWidget {
 
                       const Divider(color: Color(0xFFF0F0F0), height: 1),
 
+                      // ── Operational Advisory ──────────────────
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: const [
+                                Icon(Icons.info_outline,
+                                    size: 15, color: Color(0xFFF39C12)),
+                                SizedBox(width: 6),
+                                Text('Operational Advisory',
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFFF39C12))),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFFBF0),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: const Color(0xFFF39C12)
+                                        .withOpacity(0.35),
+                                    width: 1),
+                              ),
+                              child: Text(
+                                advisory,
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF555555),
+                                    height: 1.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const Divider(color: Color(0xFFF0F0F0), height: 1),
+
                       // ── Verified Note ─────────────────────────
                       Padding(
                         padding: const EdgeInsets.symmetric(
@@ -323,8 +380,8 @@ class CertificatePage extends StatelessWidget {
                               icon: Icons.send_outlined,
                               label: 'Send to Farmer',
                               onTap: () => ScaffoldMessenger.of(context)
-                                  .showSnackBar(
-                                      _snackBar('Send feature coming soon!')),
+                                  .showSnackBar(_snackBar(
+                                      'Send feature coming soon!')),
                             ),
                             const SizedBox(height: 10),
                             _buildActionButton(
@@ -356,7 +413,8 @@ class CertificatePage extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
+            style: const TextStyle(
+                fontSize: 12, color: Color(0xFF888888))),
         Text(value,
             style: const TextStyle(
                 fontSize: 12,
@@ -375,7 +433,8 @@ class CertificatePage extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        padding:
+            const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -402,8 +461,8 @@ class CertificatePage extends StatelessWidget {
         content: Text(msg),
         backgroundColor: const Color(0xFF11BD51),
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
       );
 }

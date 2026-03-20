@@ -4,12 +4,12 @@ import 'certificate_page.dart';
 // ── Fixed grade lookup table ──────────────────────────────────────
 // Grade → { trashDiscount, remarkCode, remarkFull }
 const Map<String, Map<String, dynamic>> kGradeLookup = {
-  'FA': {'trash': 0,  'code': 'Cc',    'remark': 'Clean canes'},
-  'FB': {'trash': 1,  'code': 'Sl',    'remark': 'Slight leaves'},
-  'FC': {'trash': 2,  'code': 'Ml',    'remark': 'Moderate leaves'},
-  'FD': {'trash': 3,  'code': 'Pl',    'remark': 'Plenty of leaves'},
-  'FE': {'trash': 4,  'code': 'Mlpct', 'remark': 'Moderate leaves and plenty of cane tops'},
-  'FF': {'trash': 5,  'code': 'Dc',    'remark': 'Dirty canes'},
+  'FA': {'trash': 0,  'code': 'Cc',    'remark': 'Clean canes',                                  'advisory': 'Maintain current harvesting practices and prioritize immediate delivery to preserve sugar content.'},
+  'FB': {'trash': 1,  'code': 'Sl',    'remark': 'Slight leaves',                                'advisory': 'Implement light cleaning before transport and encourage harvesters to remove loose leaves during bundling.'},
+  'FC': {'trash': 2,  'code': 'Ml',    'remark': 'Moderate leaves',                              'advisory': 'Apply additional manual cleaning before loading and train harvesters to strip leaves more thoroughly during cutting.'},
+  'FD': {'trash': 3,  'code': 'Pl',    'remark': 'Plenty of leaves',                             'advisory': 'Conduct pre-delivery leaf stripping operations and have supervisors inspect harvesting teams to ensure proper cane preparation.'},
+  'FE': {'trash': 4,  'code': 'Mlpct', 'remark': 'Moderate leaves and plenty of cane tops',     'advisory': 'Require trimming of cane tops and removal of excess leaves, and implement stricter grading checks at the collection point.'},
+  'FF': {'trash': 5,  'code': 'Dc',    'remark': 'Dirty canes',                                  'advisory': 'Investigate harvesting conditions and introduce corrective actions like cleaning stations and stricter field supervision.'},
 };
 
 // Returns quality label per grade
@@ -47,6 +47,7 @@ class AnalysisPage extends StatelessWidget {
     final int trashDiscount = info['trash'] as int;
     final String remarkCode  = info['code'] as String;
     final String remarkFull  = info['remark'] as String;
+    final String advisory    = info['advisory'] as String;
     final String quality     = gradeQuality(gradeKey);
 
     return Scaffold(
@@ -69,7 +70,7 @@ class AnalysisPage extends StatelessWidget {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: Image.asset(
-                        'assets/images/logo.jpeg',
+                        'assets/images/logo.png',
                         width: 40,
                         height: 40,
                         fit: BoxFit.cover,
@@ -231,6 +232,43 @@ class AnalysisPage extends StatelessWidget {
                             ),
                           ),
                         ],
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // ── Operational Advisory Card ─────────────
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBF0),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                              color: const Color(0xFFF39C12).withOpacity(0.4)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: const [
+                                Icon(Icons.info_outline,
+                                    size: 15, color: Color(0xFFF39C12)),
+                                SizedBox(width: 6),
+                                Text('Operational Advisory',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFFF39C12))),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(advisory,
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF555555),
+                                    height: 1.5)),
+                          ],
+                        ),
                       ),
 
                       const SizedBox(height: 32),
