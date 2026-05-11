@@ -275,10 +275,19 @@ class _AdminHomePageState extends State<AdminHomePage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: _buildTabButton(
-                      label: 'Graders',
+                      label: 'Admins',
                       icon: Icons.people_outline,
                       isActive: _selectedTab == 2,
                       onTap: () => setState(() => _selectedTab = 2),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildTabButton(
+                      label: 'Grades',
+                      icon: Icons.workspace_premium_outlined,
+                      isActive: _selectedTab == 3,
+                      onTap: () => setState(() => _selectedTab = 3),
                     ),
                   ),
                 ],
@@ -302,7 +311,9 @@ class _AdminHomePageState extends State<AdminHomePage> {
                     ? _buildDashboard()
                     : _selectedTab == 1
                         ? _buildFarmersTab()
-                        : _buildGradersTab(),
+                        : _selectedTab == 2
+                            ? _buildGradersTab()
+                            : _buildRecentGradesTab(),
               ),
             ),
           ],
@@ -797,6 +808,346 @@ class _AdminHomePageState extends State<AdminHomePage> {
           ),
         ),
       ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // RECENT GRADES TAB
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildRecentGradesTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 22, 20, 2),
+          child: Text('Recent Grades',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A1A))),
+        ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
+          child: Text('Latest sugarcane quality assessments',
+              style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+        ),
+        const SizedBox(height: 14),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: _firestore
+                .collection('grades')
+                .orderBy('createdAt', descending: true)
+                .limit(50)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                    child: CircularProgressIndicator(
+                        color: Color(0xFF11BD51), strokeWidth: 2.5));
+              }
+              if (snapshot.hasError) {
+                return _buildEmptyState(
+                    icon: Icons.error_outline,
+                    message: 'Error loading grades',
+                    sub: 'Please try again later');
+              }
+
+              final docs = snapshot.data?.docs ?? [];
+
+              if (docs.isEmpty) {
+                return _buildEmptyState(
+                    icon: Icons.workspace_premium_outlined,
+                    message: 'No grade records yet',
+                    sub: 'Grade records will appear here after scans');
+              }
+
+              return ListView.separated(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                itemCount: docs.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, color: Color(0xFFF0F0F0)),
+                itemBuilder: (context, index) {
+                  final data =
+                      docs[index].data() as Map<String, dynamic>;
+                  return _buildGradeRow(data);
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGradeRow(Map<String, dynamic> data) {
+    final grade = (data['grade'] ?? '--').toString().toUpperCase();
+    final farmerName = data['farmerName'] ?? 'Unknown Farmer';
+    final farmId = data['farmId'] ?? '';
+    final quality = data['quality'] ?? '';
+    final graderName = data['graderName'] ?? '';
+    final photoUrl = data['photoUrl'] ?? '';
+    final certId = data['certId'] ?? '';
+    final remarkCode = data['remarkCode'] ?? '';
+    final trashDiscount = data['trashDiscount'] ?? 0;
+    final ts = data['createdAt'];
+    String dateStr = '';
+    if (ts != null) {
+      final dt = (ts as dynamic).toDate() as DateTime;
+      dateStr =
+          '${dt.month}/${dt.day}/${dt.year}  ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+
+    return GestureDetector(
+      onTap: () => _showGradeDetail(data),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Photo thumbnail
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: photoUrl.isNotEmpty
+                  ? Image.network(
+                      photoUrl,
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _photoPlaceholder(),
+                    )
+                  : _photoPlaceholder(),
+            ),
+            const SizedBox(width: 12),
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(farmerName,
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A1A1A))),
+                  const SizedBox(height: 2),
+                  Text('Farm ID: $farmId',
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFF888888))),
+                  if (graderName.isNotEmpty)
+                    Text('Graded by: $graderName',
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xFF888888))),
+                  if (dateStr.isNotEmpty)
+                    Text(dateStr,
+                        style: const TextStyle(
+                            fontSize: 10, color: Color(0xFFAAAAAA))),
+                ],
+              ),
+            ),
+            // Grade badge
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _gradeColor(grade),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(grade,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
+                ),
+                const SizedBox(height: 4),
+                Text(quality,
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: _gradeColor(grade),
+                        fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _photoPlaceholder() {
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FBF5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+            color: const Color(0xFF11BD51).withOpacity(0.2), width: 1),
+      ),
+      child: const Icon(Icons.grass,
+          size: 28, color: Color(0xFF11BD51)),
+    );
+  }
+
+  void _showGradeDetail(Map<String, dynamic> data) {
+    final grade = (data['grade'] ?? '--').toString().toUpperCase();
+    final photoUrl = data['photoUrl'] ?? '';
+    final ts = data['createdAt'];
+    String dateStr = '';
+    if (ts != null) {
+      final dt = (ts as dynamic).toDate() as DateTime;
+      dateStr =
+          '${dt.month}/${dt.day}/${dt.year}  ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0E0E0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Photo
+            if (photoUrl.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  photoUrl,
+                  width: double.infinity,
+                  height: 200,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 200,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FBF5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.broken_image_outlined,
+                          size: 48, color: Color(0xFF11BD51)),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Container(
+                height: 120,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FBF5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.image_not_supported_outlined,
+                          size: 36, color: Color(0xFFCCCCCC)),
+                      SizedBox(height: 6),
+                      Text('No photo available',
+                          style: TextStyle(
+                              fontSize: 12, color: Color(0xFFAAAAAA))),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(data['farmerName'] ?? '',
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1A1A1A))),
+                      Text('Farm ID: ${data['farmId'] ?? ''}',
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF888888))),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _gradeColor(grade),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(grade,
+                          style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white)),
+                      Text(data['quality'] ?? '',
+                          style: const TextStyle(
+                              fontSize: 10, color: Colors.white70)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Divider(color: Color(0xFFF0F0F0)),
+            const SizedBox(height: 10),
+            _detailRow('Cert ID', data['certId'] ?? ''),
+            _detailRow('Remark',
+                '${data['remarkCode'] ?? ''} — ${data['remarkFull'] ?? ''}'),
+            _detailRow(
+                'Trash Discount', '${data['trashDiscount'] ?? 0}%'),
+            _detailRow('Graded By', data['graderName'] ?? ''),
+            _detailRow('Grader Email', data['graderEmail'] ?? ''),
+            if (dateStr.isNotEmpty) _detailRow('Date', dateStr),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(label,
+                style: const TextStyle(
+                    fontSize: 12, color: Color(0xFF888888))),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A1A1A))),
+          ),
+        ],
+      ),
     );
   }
 

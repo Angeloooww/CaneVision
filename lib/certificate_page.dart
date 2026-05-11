@@ -553,4 +553,4 @@ class _CertificatePageState extends State<CertificatePage> {
             borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
       );
-}
+} 
