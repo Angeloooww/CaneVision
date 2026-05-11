@@ -672,8 +672,6 @@ class _ScanPageState extends State<ScanPage> {
 
             const SizedBox(height: 14),
 
-            
-
             // ── Scanning For Card ─────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),

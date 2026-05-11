@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'admin_signup_page.dart';
-// import '../admin/admin_home_page.dart'; // TODO: import your admin home page
+import 'admin_home_page.dart';
 
 class AdminLoginPage extends StatefulWidget {
   const AdminLoginPage({super.key});
@@ -82,11 +82,15 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
           ),
         );
 
-        // TODO: Replace this with your AdminHomePage navigation
-        // Navigator.pushReplacement(
-        //   context,
-        //   MaterialPageRoute(builder: (_) => const AdminHomePage()),
-        // );
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (_, animation, __) => const AdminHomePage(),
+            transitionsBuilder: (_, animation, __, child) =>
+                FadeTransition(opacity: animation, child: child),
+            transitionDuration: const Duration(milliseconds: 300),
+          ),
+        );
       }
     } on FirebaseAuthException catch (e) {
       String message;
