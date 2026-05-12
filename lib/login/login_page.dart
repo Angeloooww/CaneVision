@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'signup_page.dart';
-import '../admin/admin_login_page.dart';
 import '../main_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -45,22 +43,6 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (mounted) {
-        // Check role — graders cannot use admin credentials
-        final uid = _auth.currentUser!.uid;
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .get();
-        final role = (doc.data()?['role'] ?? '').toString();
-
-        if (role == 'Admin') {
-          await _auth.signOut();
-          _showError('This is an Admin account. Please use the Admin login.');
-          setState(() => _isLoading = false);
-          return;
-        }
-
-        // Navigate to MainPage and remove login from the stack
         Navigator.pushReplacement(
           context,
           PageRouteBuilder(
@@ -206,86 +188,6 @@ class _LoginPageState extends State<LoginPage> {
 
                     const SizedBox(height: 40),
 
-                    // ── Log In label ──────────────────────────────
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('Log In As',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF888888))),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // ── Grader / Admin Toggle ─────────────────────
-                    Container(
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(25),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          // Grader — active
-                          Expanded(
-                            child: Container(
-                              margin: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF4A4A4A),
-                                borderRadius: BorderRadius.circular(22),
-                              ),
-                              alignment: Alignment.center,
-                              child: const Text('Grader',
-                                  style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white)),
-                            ),
-                          ),
-                          // Admin — navigate to AdminLoginPage
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  PageRouteBuilder(
-                                    pageBuilder: (_, animation, __) =>
-                                        const AdminLoginPage(),
-                                    transitionsBuilder:
-                                        (_, animation, __, child) =>
-                                            FadeTransition(
-                                                opacity: animation,
-                                                child: child),
-                                    transitionDuration:
-                                        const Duration(milliseconds: 250),
-                                  ),
-                                );
-                              },
-                              child: Container(
-                                margin: const EdgeInsets.all(4),
-                                alignment: Alignment.center,
-                                child: const Text('Admin',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF888888))),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 28),
-
                     // Email
                     _buildFieldLabel('Email', Icons.email_outlined),
                     const SizedBox(height: 8),
@@ -319,7 +221,7 @@ class _LoginPageState extends State<LoginPage> {
 
                     const SizedBox(height: 16),
 
-                    // ── Don't have an account ─────────────────────
+                    // Don't have an account
                     Row(
                       children: [
                         const Text("Don't have an account? ",

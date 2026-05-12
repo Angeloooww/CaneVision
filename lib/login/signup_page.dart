@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../admin/admin_signup_page.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -19,7 +18,6 @@ class _SignupPageState extends State<SignupPage> {
   bool _obscurePassword = true;
   bool _isLoading = false;
 
-  // Firebase instances
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -34,7 +32,6 @@ class _SignupPageState extends State<SignupPage> {
 
   // ── SIGN UP LOGIC ─────────────────────────────────────────────
   Future<void> _handleSignUp() async {
-    // Basic validation
     if (_fullNameController.text.trim().isEmpty ||
         _emailController.text.trim().isEmpty ||
         _passwordController.text.trim().isEmpty ||
@@ -56,7 +53,6 @@ class _SignupPageState extends State<SignupPage> {
       final String uid = userCredential.user!.uid;
 
       // Step 2: Save extra user details to Firestore
-      // This creates a document in the "users" collection with the user's UID as the document ID
       await _firestore.collection('users').doc(uid).set({
         'fullName': _fullNameController.text.trim(),
         'email': _emailController.text.trim(),
@@ -70,20 +66,16 @@ class _SignupPageState extends State<SignupPage> {
         _fullNameController.text.trim(),
       );
 
-      // Step 4: Sign out immediately — Firebase auto-logs in after
-      // createUserWithEmailAndPassword, so we sign out to force the
-      // user to log in manually. AuthWrapper will redirect to LoginPage.
+      // Step 4: Sign out — force the user to log in manually
       await _auth.signOut();
 
       if (mounted) {
         _showSuccess('Account created! Please log in.');
-        // Go back to login page after a short delay
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) Navigator.pop(context);
         });
       }
     } on FirebaseAuthException catch (e) {
-      // Handle specific Firebase Auth errors
       String message;
       switch (e.code) {
         case 'email-already-in-use':
@@ -221,86 +213,6 @@ class _SignupPageState extends State<SignupPage> {
                     ),
 
                     const SizedBox(height: 40),
-
-                    // ── Sign Up label ─────────────────────────────
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('Sign Up As',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF888888))),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // ── Grader / Admin Toggle ─────────────────────
-                    Container(
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(25),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          // Grader — active
-                          Expanded(
-                            child: Container(
-                              margin: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF4A4A4A),
-                                borderRadius: BorderRadius.circular(22),
-                              ),
-                              alignment: Alignment.center,
-                              child: const Text('Grader',
-                                  style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white)),
-                            ),
-                          ),
-                          // Admin — navigate to AdminSignupPage
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  PageRouteBuilder(
-                                    pageBuilder: (_, animation, __) =>
-                                        const AdminSignupPage(),
-                                    transitionsBuilder:
-                                        (_, animation, __, child) =>
-                                            FadeTransition(
-                                                opacity: animation,
-                                                child: child),
-                                    transitionDuration:
-                                        const Duration(milliseconds: 250),
-                                  ),
-                                );
-                              },
-                              child: Container(
-                                margin: const EdgeInsets.all(4),
-                                alignment: Alignment.center,
-                                child: const Text('Admin',
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF888888))),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 28),
 
                     // Full Name
                     _buildFieldLabel('Full name', Icons.person_outline),
