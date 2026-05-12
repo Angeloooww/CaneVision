@@ -10,12 +10,16 @@ class SignupPage extends StatefulWidget {
 }
 
 class _SignupPageState extends State<SignupPage> {
-  final TextEditingController _fullNameController = TextEditingController();
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _middleNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _orgIdController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _contactNumberController = TextEditingController();
 
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   bool _isLoading = false;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -23,20 +27,39 @@ class _SignupPageState extends State<SignupPage> {
 
   @override
   void dispose() {
-    _fullNameController.dispose();
+    _firstNameController.dispose();
+    _middleNameController.dispose();
+    _lastNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _orgIdController.dispose();
+    _confirmPasswordController.dispose();
+    _contactNumberController.dispose();
     super.dispose();
   }
 
   // ── SIGN UP LOGIC ─────────────────────────────────────────────
   Future<void> _handleSignUp() async {
-    if (_fullNameController.text.trim().isEmpty ||
-        _emailController.text.trim().isEmpty ||
-        _passwordController.text.trim().isEmpty ||
-        _orgIdController.text.trim().isEmpty) {
-      _showError('Please fill in all fields.');
+    final firstName = _firstNameController.text.trim();
+    final middleName = _middleNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    if (firstName.isEmpty || lastName.isEmpty ||
+        email.isEmpty || password.isEmpty || confirmPassword.isEmpty ||
+        _contactNumberController.text.trim().isEmpty) {
+      _showError('Please fill in all required fields.');
+      return;
+    }
+
+    if (password != confirmPassword) {
+      _showError('Passwords do not match.');
+      return;
+    }
+
+    if (password.length < 6) {
+      _showError('Password must be at least 6 characters.');
       return;
     }
 
@@ -46,25 +69,31 @@ class _SignupPageState extends State<SignupPage> {
       // Step 1: Create user in Firebase Auth
       final UserCredential userCredential =
           await _auth.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+        email: email,
+        password: password,
       );
 
       final String uid = userCredential.user!.uid;
 
-      // Step 2: Save extra user details to Firestore
+      // Build full name: "First Middle Last" (middle is optional)
+      final String fullName = middleName.isNotEmpty
+          ? '$firstName $middleName $lastName'
+          : '$firstName $lastName';
+
+      // Step 2: Save user details to Firestore
       await _firestore.collection('users').doc(uid).set({
-        'fullName': _fullNameController.text.trim(),
-        'email': _emailController.text.trim(),
-        'organizationId': _orgIdController.text.trim(),
-        'role': 'Quality Grader',
+        'firstName': firstName,
+        'middleName': middleName,
+        'lastName': lastName,
+        'fullName': fullName,
+        'email': email,
+        'contactNumber': _contactNumberController.text.trim(),
+        'role': 'Grader',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
       // Step 3: Update Firebase Auth display name
-      await userCredential.user!.updateDisplayName(
-        _fullNameController.text.trim(),
-      );
+      await userCredential.user!.updateDisplayName(fullName);
 
       // Step 4: Sign out — force the user to log in manually
       await _auth.signOut();
@@ -214,19 +243,52 @@ class _SignupPageState extends State<SignupPage> {
 
                     const SizedBox(height: 40),
 
-                    // Full Name
-                    _buildFieldLabel('Full name', Icons.person_outline),
+                    // First Name
+                    _buildFieldLabel('First Name *', Icons.person_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
-                      controller: _fullNameController,
-                      hint: 'Enter your full name here',
+                      controller: _firstNameController,
+                      hint: 'Enter your first name',
                       keyboardType: TextInputType.name,
                     ),
 
                     const SizedBox(height: 20),
 
+                    // Middle Name
+                    _buildFieldLabel('Middle Name (optional)', Icons.person_outline),
+                    const SizedBox(height: 8),
+                    _buildTextField(
+                      controller: _middleNameController,
+                      hint: 'Enter your middle name',
+                      keyboardType: TextInputType.name,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Last Name
+                    _buildFieldLabel('Last Name *', Icons.person_outline),
+                    const SizedBox(height: 8),
+                    _buildTextField(
+                      controller: _lastNameController,
+                      hint: 'Enter your last name',
+                      keyboardType: TextInputType.name,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Contact Number
+                    _buildFieldLabel('Contact Number *', Icons.phone_outlined),
+                    const SizedBox(height: 8),
+                    _buildTextField(
+                      controller: _contactNumberController,
+                      hint: 'Enter your contact number',
+                      keyboardType: TextInputType.phone,
+                    ),
+
+                    const SizedBox(height: 20),
+
                     // Email
-                    _buildFieldLabel('Email', Icons.email_outlined),
+                    _buildFieldLabel('Email *', Icons.email_outlined),
                     const SizedBox(height: 8),
                     _buildTextField(
                       controller: _emailController,
@@ -237,7 +299,7 @@ class _SignupPageState extends State<SignupPage> {
                     const SizedBox(height: 20),
 
                     // Password
-                    _buildFieldLabel('Password', Icons.lock_outline),
+                    _buildFieldLabel('Password *', Icons.lock_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
                       controller: _passwordController,
@@ -258,12 +320,24 @@ class _SignupPageState extends State<SignupPage> {
 
                     const SizedBox(height: 20),
 
-                    // Organization ID
-                    _buildFieldLabel('Organization ID', Icons.business_outlined),
+                    // Confirm Password
+                    _buildFieldLabel('Confirm Password *', Icons.lock_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
-                      controller: _orgIdController,
-                      hint: 'Enter your organization ID here',
+                      controller: _confirmPasswordController,
+                      hint: 'Re-enter your password',
+                      obscureText: _obscureConfirmPassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureConfirmPassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          color: const Color(0xFF888888),
+                          size: 20,
+                        ),
+                        onPressed: () => setState(
+                            () => _obscureConfirmPassword = !_obscureConfirmPassword),
+                      ),
                     ),
 
                     const SizedBox(height: 32),
