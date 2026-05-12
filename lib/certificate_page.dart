@@ -366,24 +366,38 @@ class _CertificatePageState extends State<CertificatePage> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const Icon(Icons.workspace_premium,
                                   color: Colors.white, size: 28),
                               const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(widget.grade,
-                                      style: const TextStyle(
-                                          fontSize: 32,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white)),
-                                  Text(widget.quality,
-                                      style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.white70)),
-                                ],
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(widget.grade,
+                                        style: const TextStyle(
+                                            fontSize: 32,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white)),
+                                    Text(widget.quality,
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.white70)),
+                                  ],
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: _showClassificationsSheet,
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(
+                                      Icons.remove_red_eye_outlined,
+                                      color: Colors.white, size: 20),
+                                ),
                               ),
                             ],
                           ),
@@ -758,4 +772,227 @@ class _CertificatePageState extends State<CertificatePage> {
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
       );
+
+  // ── Grade Classifications Sheet ───────────────────────────────
+  static const List<Map<String, dynamic>> _classifications = [
+    {
+      'grade': 'FA',
+      'trashDiscount': '0%',
+      'remarkCode': 'Cc',
+      'remarkFull': 'Clean Canes',
+      'color': 0xFF27AE60,
+    },
+    {
+      'grade': 'FB',
+      'trashDiscount': '1%',
+      'remarkCode': 'SI',
+      'remarkFull': 'Slight Leaves',
+      'color': 0xFF2ECC71,
+    },
+    {
+      'grade': 'FC',
+      'trashDiscount': '2%',
+      'remarkCode': 'MI',
+      'remarkFull': 'Moderate Leaves',
+      'color': 0xFFF39C12,
+    },
+    {
+      'grade': 'FD',
+      'trashDiscount': '3%',
+      'remarkCode': 'PI',
+      'remarkFull': 'Plenty of Leaves',
+      'color': 0xFFE67E22,
+    },
+    {
+      'grade': 'FE',
+      'trashDiscount': '4%',
+      'remarkCode': 'Mlpct',
+      'remarkFull': 'Moderate Leaves and Plenty of Cane Tops',
+      'color': 0xFFE74C3C,
+    },
+    {
+      'grade': 'FF',
+      'trashDiscount': '5%',
+      'remarkCode': 'DD',
+      'remarkFull': 'Dirty Canes',
+      'color': 0xFF922B21,
+    },
+  ];
+
+  void _showClassificationsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0E0E0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Title
+            Row(
+              children: const [
+                Icon(Icons.workspace_premium,
+                    size: 18, color: Color(0xFF11BD51)),
+                SizedBox(width: 8),
+                Text('Grade Classifications',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1A1A1A))),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Trash discount and remarks per grade',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+            ),
+            const SizedBox(height: 16),
+
+            // Header row
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7F7F7),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  SizedBox(
+                    width: 36,
+                    child: Text('Grade',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF888888))),
+                  ),
+                  SizedBox(width: 10),
+                  SizedBox(
+                    width: 60,
+                    child: Text('Discount',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF888888))),
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Remarks',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF888888))),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // Classification rows
+            ..._classifications.map((c) {
+              final isCurrentGrade =
+                  widget.grade.toUpperCase() == c['grade'];
+              final color = Color(c['color'] as int);
+              return Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isCurrentGrade
+                      ? color.withOpacity(0.08)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  border: isCurrentGrade
+                      ? Border.all(color: color.withOpacity(0.4), width: 1.5)
+                      : Border.all(color: Colors.transparent),
+                ),
+                child: Row(
+                  children: [
+                    // Grade badge
+                    Container(
+                      width: 36,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(c['grade'] as String,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white)),
+                    ),
+                    const SizedBox(width: 10),
+                    // Trash discount
+                    SizedBox(
+                      width: 60,
+                      child: Text(c['trashDiscount'] as String,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: color)),
+                    ),
+                    const SizedBox(width: 10),
+                    // Remark
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(c['remarkCode'] as String,
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF1A1A1A))),
+                          Text(c['remarkFull'] as String,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF888888),
+                                  height: 1.3)),
+                        ],
+                      ),
+                    ),
+                    // "Current" tag
+                    if (isCurrentGrade)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text('Current',
+                            style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white)),
+                      ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
 }
