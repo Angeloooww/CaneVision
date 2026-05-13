@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'signup_page.dart';
 import '../main_page.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  final bool showPendingDialog;
+  final bool showRejectedMessage;
+
+  const LoginPage({
+    super.key,
+    this.showPendingDialog = false,
+    this.showRejectedMessage = false,
+  });
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -18,6 +26,24 @@ class _LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    // Show dialog after first frame so context is ready
+    if (widget.showPendingDialog) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showPendingDialog();
+      });
+    }
+    if (widget.showRejectedMessage) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showError(
+            'Your account has been rejected. Please contact your administrator.');
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -26,7 +52,6 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // ── LOGIN LOGIC ───────────────────────────────────────────────
   Future<void> _handleLogin() async {
     if (_emailController.text.trim().isEmpty ||
         _passwordController.text.trim().isEmpty) {
@@ -37,20 +62,47 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      await _auth.signInWithEmailAndPassword(
+      final UserCredential credential =
+          await _auth.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
+
+      final String uid = credential.user!.uid;
+      final doc = await _firestore.collection('users').doc(uid).get();
+
+      if (!doc.exists) {
+        await _auth.signOut();
+        _showError('Account not found.');
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final data = doc.data()!;
+      final status = (data['status'] ?? 'approved').toString();
+
+      if (status == 'pending') {
+        await _auth.signOut();
+        setState(() => _isLoading = false);
+        _showPendingDialog();
+        return;
+      }
+
+      if (status == 'rejected') {
+        await _auth.signOut();
+        setState(() => _isLoading = false);
+        _showError(
+            'Your account has been rejected. Please contact your administrator.');
+        return;
+      }
 
       if (mounted) {
         Navigator.pushReplacement(
           context,
           PageRouteBuilder(
             pageBuilder: (_, animation, __) => const MainPage(),
-            transitionsBuilder: (_, animation, __, child) => FadeTransition(
-              opacity: animation,
-              child: child,
-            ),
+            transitionsBuilder: (_, animation, __, child) =>
+                FadeTransition(opacity: animation, child: child),
             transitionDuration: const Duration(milliseconds: 300),
           ),
         );
@@ -66,6 +118,9 @@ class _LoginPageState extends State<LoginPage> {
           break;
         case 'invalid-email':
           message = 'Please enter a valid email address.';
+          break;
+        case 'invalid-credential':
+          message = 'Invalid credentials. Please try again.';
           break;
         case 'user-disabled':
           message = 'This account has been disabled.';
@@ -84,13 +139,74 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  void _showPendingDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8E1),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.hourglass_top_rounded,
+                  size: 32, color: Color(0xFFFFB300)),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Waiting for Admin Approval',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A1A)),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Your account is waiting for admin approval. You will be able to log in once an admin approves your registration.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 13, color: Color(0xFF666666), height: 1.5),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF11BD51),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('OK',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.redAccent,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
       ),
     );
@@ -103,49 +219,40 @@ class _LoginPageState extends State<LoginPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // Top App Bar
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Row(
                 children: [
                   Container(
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFF11BD51), width: 2),
+                      border: Border.all(
+                          color: const Color(0xFF11BD51), width: 2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.cover,
-                      ),
+                      child: Image.asset('assets/images/logo.png',
+                          width: 40, height: 40, fit: BoxFit.cover),
                     ),
                   ),
                   const SizedBox(width: 10),
-                  const Text(
-                    'CaneVision',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                  ),
+                  const Text('CaneVision',
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A1A))),
                 ],
               ),
             ),
-
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   children: [
                     const SizedBox(height: 30),
-
-                    // Grader Icon Card
                     Container(
                       width: 110,
                       height: 110,
@@ -154,10 +261,9 @@ class _LoginPageState extends State<LoginPage> {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4))
                         ],
                       ),
                       child: Column(
@@ -185,21 +291,16 @@ class _LoginPageState extends State<LoginPage> {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 40),
 
-                    // Email
                     _buildFieldLabel('Email', Icons.email_outlined),
                     const SizedBox(height: 8),
                     _buildTextField(
-                      controller: _emailController,
-                      hint: 'Enter your email here',
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-
+                        controller: _emailController,
+                        hint: 'Enter your email here',
+                        keyboardType: TextInputType.emailAddress),
                     const SizedBox(height: 20),
 
-                    // Password
                     _buildFieldLabel('Password', Icons.lock_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
@@ -218,32 +319,26 @@ class _LoginPageState extends State<LoginPage> {
                             () => _obscurePassword = !_obscurePassword),
                       ),
                     ),
-
                     const SizedBox(height: 16),
 
-                    // Don't have an account
                     Row(
                       children: [
                         const Text("Don't have an account? ",
                             style: TextStyle(
                                 fontSize: 12, color: Color(0xFF888888))),
                         GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              PageRouteBuilder(
-                                pageBuilder: (_, animation, __) =>
-                                    const SignupPage(),
-                                transitionsBuilder:
-                                    (_, animation, __, child) =>
-                                        FadeTransition(
-                                            opacity: animation,
-                                            child: child),
-                                transitionDuration:
-                                    const Duration(milliseconds: 250),
-                              ),
-                            );
-                          },
+                          onTap: () => Navigator.push(
+                            context,
+                            PageRouteBuilder(
+                              pageBuilder: (_, animation, __) =>
+                                  const SignupPage(),
+                              transitionsBuilder:
+                                  (_, animation, __, child) => FadeTransition(
+                                      opacity: animation, child: child),
+                              transitionDuration:
+                                  const Duration(milliseconds: 250),
+                            ),
+                          ),
                           child: const Text('Sign up here',
                               style: TextStyle(
                                   fontSize: 12,
@@ -252,10 +347,8 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 32),
 
-                    // Submit Button
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -275,20 +368,14 @@ class _LoginPageState extends State<LoginPage> {
                                 width: 22,
                                 height: 22,
                                 child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
-                            : const Text(
-                                'Login as Quality Grader',
+                                    color: Colors.white, strokeWidth: 2.5))
+                            : const Text('Login as Quality Grader',
                                 style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.3),
-                              ),
+                                    letterSpacing: 0.3)),
                       ),
                     ),
-
                     const SizedBox(height: 30),
                   ],
                 ),

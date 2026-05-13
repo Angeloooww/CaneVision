@@ -13,10 +13,10 @@ class _SignupPageState extends State<SignupPage> {
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _middleNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _contactNumberController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
-  final TextEditingController _contactNumberController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -30,25 +30,24 @@ class _SignupPageState extends State<SignupPage> {
     _firstNameController.dispose();
     _middleNameController.dispose();
     _lastNameController.dispose();
+    _contactNumberController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _contactNumberController.dispose();
     super.dispose();
   }
 
-  // ── SIGN UP LOGIC ─────────────────────────────────────────────
   Future<void> _handleSignUp() async {
     final firstName = _firstNameController.text.trim();
     final middleName = _middleNameController.text.trim();
     final lastName = _lastNameController.text.trim();
+    final contact = _contactNumberController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
 
-    if (firstName.isEmpty || lastName.isEmpty ||
-        email.isEmpty || password.isEmpty || confirmPassword.isEmpty ||
-        _contactNumberController.text.trim().isEmpty) {
+    if (firstName.isEmpty || lastName.isEmpty || contact.isEmpty ||
+        email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
       _showError('Please fill in all required fields.');
       return;
     }
@@ -66,7 +65,6 @@ class _SignupPageState extends State<SignupPage> {
     setState(() => _isLoading = true);
 
     try {
-      // Step 1: Create user in Firebase Auth
       final UserCredential userCredential =
           await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -75,32 +73,32 @@ class _SignupPageState extends State<SignupPage> {
 
       final String uid = userCredential.user!.uid;
 
-      // Build full name: "First Middle Last" (middle is optional)
       final String fullName = middleName.isNotEmpty
           ? '$firstName $middleName $lastName'
           : '$firstName $lastName';
 
-      // Step 2: Save user details to Firestore
+      // Save with status: 'pending' — admin must approve before they can log in
       await _firestore.collection('users').doc(uid).set({
         'firstName': firstName,
         'middleName': middleName,
         'lastName': lastName,
         'fullName': fullName,
         'email': email,
-        'contactNumber': _contactNumberController.text.trim(),
+        'contactNumber': contact,
         'role': 'Grader',
+        'status': 'pending',          // ← key field
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // Step 3: Update Firebase Auth display name
       await userCredential.user!.updateDisplayName(fullName);
 
-      // Step 4: Sign out — force the user to log in manually
+      // Sign out immediately — they must wait for admin approval
       await _auth.signOut();
 
       if (mounted) {
-        _showSuccess('Account created! Please log in.');
-        Future.delayed(const Duration(seconds: 1), () {
+        _showSuccess(
+            'Registration submitted! Please wait for admin approval before logging in.');
+        Future.delayed(const Duration(seconds: 2), () {
           if (mounted) Navigator.pop(context);
         });
       }
@@ -147,6 +145,7 @@ class _SignupPageState extends State<SignupPage> {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -158,7 +157,6 @@ class _SignupPageState extends State<SignupPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // Top App Bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Row(
@@ -174,53 +172,40 @@ class _SignupPageState extends State<SignupPage> {
                       borderRadius: BorderRadius.circular(10),
                       child: Image.asset(
                         'assets/images/logo.png',
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.cover,
+                        width: 40, height: 40, fit: BoxFit.cover,
                       ),
                     ),
                   ),
                   const SizedBox(width: 10),
-                  const Text(
-                    'CaneVision',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                  ),
+                  const Text('CaneVision',
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A1A))),
                 ],
               ),
             ),
-
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   children: [
-                    const SizedBox(height: 30),
-
-                    // Grader Icon Card
+                    const SizedBox(height: 20),
                     Container(
-                      width: 110,
-                      height: 110,
+                      width: 110, height: 110,
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
+                          BoxShadow(color: Colors.black.withOpacity(0.06),
+                              blurRadius: 12, offset: const Offset(0, 4))
                         ],
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Container(
-                            width: 50,
-                            height: 50,
+                            width: 50, height: 50,
                             decoration: BoxDecoration(
                               color: const Color(0xFFE8F8EF),
                               borderRadius: BorderRadius.circular(10),
@@ -240,63 +225,52 @@ class _SignupPageState extends State<SignupPage> {
                         ],
                       ),
                     ),
-
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 28),
 
                     // First Name
                     _buildFieldLabel('First Name *', Icons.person_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
-                      controller: _firstNameController,
-                      hint: 'Enter your first name',
-                      keyboardType: TextInputType.name,
-                    ),
-
-                    const SizedBox(height: 20),
+                        controller: _firstNameController,
+                        hint: 'Enter your first name',
+                        keyboardType: TextInputType.name),
+                    const SizedBox(height: 16),
 
                     // Middle Name
                     _buildFieldLabel('Middle Name (optional)', Icons.person_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
-                      controller: _middleNameController,
-                      hint: 'Enter your middle name',
-                      keyboardType: TextInputType.name,
-                    ),
-
-                    const SizedBox(height: 20),
+                        controller: _middleNameController,
+                        hint: 'Enter your middle name',
+                        keyboardType: TextInputType.name),
+                    const SizedBox(height: 16),
 
                     // Last Name
                     _buildFieldLabel('Last Name *', Icons.person_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
-                      controller: _lastNameController,
-                      hint: 'Enter your last name',
-                      keyboardType: TextInputType.name,
-                    ),
-
-                    const SizedBox(height: 20),
+                        controller: _lastNameController,
+                        hint: 'Enter your last name',
+                        keyboardType: TextInputType.name),
+                    const SizedBox(height: 16),
 
                     // Contact Number
                     _buildFieldLabel('Contact Number *', Icons.phone_outlined),
                     const SizedBox(height: 8),
                     _buildTextField(
-                      controller: _contactNumberController,
-                      hint: 'Enter your contact number',
-                      keyboardType: TextInputType.phone,
-                    ),
-
-                    const SizedBox(height: 20),
+                        controller: _contactNumberController,
+                        hint: 'Enter your contact number',
+                        keyboardType: TextInputType.phone),
+                    const SizedBox(height: 16),
 
                     // Email
                     _buildFieldLabel('Email *', Icons.email_outlined),
                     const SizedBox(height: 8),
                     _buildTextField(
-                      controller: _emailController,
-                      hint: 'Enter your email here',
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-
-                    const SizedBox(height: 20),
+                        controller: _emailController,
+                        hint: 'Enter your email here',
+                        keyboardType: TextInputType.emailAddress),
+                    const SizedBox(height: 16),
 
                     // Password
                     _buildFieldLabel('Password *', Icons.lock_outline),
@@ -310,15 +284,13 @@ class _SignupPageState extends State<SignupPage> {
                           _obscurePassword
                               ? Icons.visibility_off_outlined
                               : Icons.visibility_outlined,
-                          color: const Color(0xFF888888),
-                          size: 20,
+                          color: const Color(0xFF888888), size: 20,
                         ),
-                        onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword),
+                        onPressed: () =>
+                            setState(() => _obscurePassword = !_obscurePassword),
                       ),
                     ),
-
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
 
                     // Confirm Password
                     _buildFieldLabel('Confirm Password *', Icons.lock_outline),
@@ -332,17 +304,41 @@ class _SignupPageState extends State<SignupPage> {
                           _obscureConfirmPassword
                               ? Icons.visibility_off_outlined
                               : Icons.visibility_outlined,
-                          color: const Color(0xFF888888),
-                          size: 20,
+                          color: const Color(0xFF888888), size: 20,
                         ),
                         onPressed: () => setState(
                             () => _obscureConfirmPassword = !_obscureConfirmPassword),
                       ),
                     ),
+                    const SizedBox(height: 12),
 
-                    const SizedBox(height: 32),
+                    // Info note
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8E1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: const Color(0xFFFFB300).withOpacity(0.4)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 16, color: Color(0xFFFFB300)),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Your account will be reviewed by an admin before you can log in.',
+                              style: TextStyle(
+                                  fontSize: 11, color: Color(0xFF795548)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
-                    // Submit Button
+                    const SizedBox(height: 28),
+
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -359,23 +355,16 @@ class _SignupPageState extends State<SignupPage> {
                         ),
                         child: _isLoading
                             ? const SizedBox(
-                                width: 22,
-                                height: 22,
+                                width: 22, height: 22,
                                 child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
-                            : const Text(
-                                'Sign up as Quality Grader',
+                                    color: Colors.white, strokeWidth: 2.5))
+                            : const Text('Submit Registration',
                                 style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.3),
-                              ),
+                                    letterSpacing: 0.3)),
                       ),
                     ),
-
                     const SizedBox(height: 30),
                   ],
                 ),
@@ -415,8 +404,7 @@ class _SignupPageState extends State<SignupPage> {
       style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle:
-            const TextStyle(fontSize: 13, color: Color(0xFFBBBBBB)),
+        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFFBBBBBB)),
         filled: true,
         fillColor: Colors.white,
         suffixIcon: suffixIcon,
@@ -427,13 +415,11 @@ class _SignupPageState extends State<SignupPage> {
             borderSide: BorderSide.none),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide:
-              BorderSide(color: Colors.grey.withOpacity(0.15), width: 1),
+          borderSide: BorderSide(color: Colors.grey.withOpacity(0.15), width: 1),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide:
-              const BorderSide(color: Color(0xFF27AE60), width: 1.5),
+          borderSide: const BorderSide(color: Color(0xFF27AE60), width: 1.5),
         ),
       ),
     );
