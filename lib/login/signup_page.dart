@@ -1,7 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// ── Country model ─────────────────────────────────────────────────
+class _Country {
+  final String name;
+  final String flag;
+  final String dialCode;
+  final int digitCount; // expected local number length
+  final String hint;
+
+  const _Country({
+    required this.name,
+    required this.flag,
+    required this.dialCode,
+    required this.digitCount,
+    required this.hint,
+  });
+}
+
+const List<_Country> _countries = [
+  _Country(name: 'Philippines', flag: '🇵🇭', dialCode: '+63', digitCount: 10, hint: '9XX XXX XXXX'),
+  _Country(name: 'United States', flag: '🇺🇸', dialCode: '+1',  digitCount: 10, hint: 'XXX XXX XXXX'),
+  _Country(name: 'United Kingdom', flag: '🇬🇧', dialCode: '+44', digitCount: 10, hint: 'XXXX XXXXXX'),
+  _Country(name: 'Australia', flag: '🇦🇺', dialCode: '+61', digitCount: 9,  hint: 'XXX XXX XXX'),
+  _Country(name: 'Japan', flag: '🇯🇵', dialCode: '+81', digitCount: 10, hint: 'XX XXXX XXXX'),
+  _Country(name: 'Singapore', flag: '🇸🇬', dialCode: '+65', digitCount: 8,  hint: 'XXXX XXXX'),
+  _Country(name: 'Malaysia', flag: '🇲🇾', dialCode: '+60', digitCount: 9,  hint: 'XX XXXX XXXX'),
+  _Country(name: 'Indonesia', flag: '🇮🇩', dialCode: '+62', digitCount: 10, hint: 'XXX XXXX XXXX'),
+  _Country(name: 'Canada', flag: '🇨🇦', dialCode: '+1',  digitCount: 10, hint: 'XXX XXX XXXX'),
+  _Country(name: 'India', flag: '🇮🇳', dialCode: '+91', digitCount: 10, hint: 'XXXXX XXXXX'),
+  _Country(name: 'UAE', flag: '🇦🇪', dialCode: '+971', digitCount: 9,  hint: 'XX XXX XXXX'),
+  _Country(name: 'Saudi Arabia', flag: '🇸🇦', dialCode: '+966', digitCount: 9, hint: 'XX XXX XXXX'),
+];
+
+// ── Signup Page ───────────────────────────────────────────────────
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
 
@@ -17,6 +51,9 @@ class _SignupPageState extends State<SignupPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
+
+  // Default to Philippines
+  _Country _selectedCountry = _countries[0];
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -37,6 +74,28 @@ class _SignupPageState extends State<SignupPage> {
     super.dispose();
   }
 
+  // ── Validate contact number ───────────────────────────────────
+  String? _validateContact(String number) {
+    final digits = number.replaceAll(RegExp(r'\D'), '');
+
+    // PH-specific: must start with 9 and be exactly 10 digits
+    if (_selectedCountry.dialCode == '+63') {
+      if (digits.length != 10) {
+        return 'PH number must be 10 digits (e.g. 9XX XXX XXXX).';
+      }
+      if (!digits.startsWith('9')) {
+        return 'PH mobile numbers must start with 9.';
+      }
+      return null;
+    }
+
+    // Generic: check digit count
+    if (digits.length != _selectedCountry.digitCount) {
+      return '${_selectedCountry.name} numbers must be ${_selectedCountry.digitCount} digits.';
+    }
+    return null;
+  }
+
   Future<void> _handleSignUp() async {
     final firstName = _firstNameController.text.trim();
     final middleName = _middleNameController.text.trim();
@@ -49,6 +108,12 @@ class _SignupPageState extends State<SignupPage> {
     if (firstName.isEmpty || lastName.isEmpty || contact.isEmpty ||
         email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
       _showError('Please fill in all required fields.');
+      return;
+    }
+
+    final contactError = _validateContact(contact);
+    if (contactError != null) {
+      _showError(contactError);
       return;
     }
 
@@ -77,22 +142,25 @@ class _SignupPageState extends State<SignupPage> {
           ? '$firstName $middleName $lastName'
           : '$firstName $lastName';
 
-      // Save with status: 'pending' — admin must approve before they can log in
+      // Store full international number e.g. "+63 917 123 4567"
+      final String fullContact =
+          '${_selectedCountry.dialCode} $contact';
+
       await _firestore.collection('users').doc(uid).set({
         'firstName': firstName,
         'middleName': middleName,
         'lastName': lastName,
         'fullName': fullName,
         'email': email,
-        'contactNumber': contact,
+        'contactNumber': fullContact,
+        'countryCode': _selectedCountry.dialCode,
+        'country': _selectedCountry.name,
         'role': 'Grader',
-        'status': 'pending',          // ← key field
+        'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
       await userCredential.user!.updateDisplayName(fullName);
-
-      // Sign out immediately — they must wait for admin approval
       await _auth.signOut();
 
       if (mounted) {
@@ -123,6 +191,99 @@ class _SignupPageState extends State<SignupPage> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // ── Country picker bottom sheet ───────────────────────────────
+  void _showCountryPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
+        height: MediaQuery.of(context).size.height * 0.6,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0E0E0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('Select Country',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A1A))),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView.separated(
+                itemCount: _countries.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, color: Color(0xFFF0F0F0)),
+                itemBuilder: (_, i) {
+                  final c = _countries[i];
+                  final isSelected = c.dialCode == _selectedCountry.dialCode &&
+                      c.name == _selectedCountry.name;
+                  return InkWell(
+                    onTap: () {
+                      setState(() {
+                        _selectedCountry = c;
+                        _contactNumberController.clear();
+                      });
+                      Navigator.pop(context);
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFFE8F8EF)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(c.flag, style: const TextStyle(fontSize: 22)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(c.name,
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                    color: const Color(0xFF1A1A1A))),
+                          ),
+                          Text(c.dialCode,
+                              style: const TextStyle(
+                                  fontSize: 13, color: Color(0xFF888888))),
+                          if (isSelected) ...[
+                            const SizedBox(width: 8),
+                            const Icon(Icons.check_circle,
+                                size: 18, color: Color(0xFF11BD51)),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showError(String message) {
@@ -157,23 +318,22 @@ class _SignupPageState extends State<SignupPage> {
       body: SafeArea(
         child: Column(
           children: [
+            // ── App bar ─────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Row(
                 children: [
                   Container(
-                    width: 44,
-                    height: 44,
+                    width: 44, height: 44,
                     decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFF11BD51), width: 2),
+                      border: Border.all(
+                          color: const Color(0xFF11BD51), width: 2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        width: 40, height: 40, fit: BoxFit.cover,
-                      ),
+                      child: Image.asset('assets/images/logo.png',
+                          width: 40, height: 40, fit: BoxFit.cover),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -185,20 +345,25 @@ class _SignupPageState extends State<SignupPage> {
                 ],
               ),
             ),
+
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   children: [
                     const SizedBox(height: 20),
+
+                    // ── Icon card ──────────────────────────────
                     Container(
                       width: 110, height: 110,
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.06),
-                              blurRadius: 12, offset: const Offset(0, 4))
+                          BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4))
                         ],
                       ),
                       child: Column(
@@ -227,7 +392,7 @@ class _SignupPageState extends State<SignupPage> {
                     ),
                     const SizedBox(height: 28),
 
-                    // First Name
+                    // ── First Name ─────────────────────────────
                     _buildFieldLabel('First Name *', Icons.person_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
@@ -236,8 +401,9 @@ class _SignupPageState extends State<SignupPage> {
                         keyboardType: TextInputType.name),
                     const SizedBox(height: 16),
 
-                    // Middle Name
-                    _buildFieldLabel('Middle Name (optional)', Icons.person_outline),
+                    // ── Middle Name ────────────────────────────
+                    _buildFieldLabel(
+                        'Middle Name (optional)', Icons.person_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
                         controller: _middleNameController,
@@ -245,7 +411,7 @@ class _SignupPageState extends State<SignupPage> {
                         keyboardType: TextInputType.name),
                     const SizedBox(height: 16),
 
-                    // Last Name
+                    // ── Last Name ──────────────────────────────
                     _buildFieldLabel('Last Name *', Icons.person_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
@@ -254,16 +420,24 @@ class _SignupPageState extends State<SignupPage> {
                         keyboardType: TextInputType.name),
                     const SizedBox(height: 16),
 
-                    // Contact Number
-                    _buildFieldLabel('Contact Number *', Icons.phone_outlined),
+                    // ── Contact Number ─────────────────────────
+                    _buildFieldLabel(
+                        'Contact Number *', Icons.phone_outlined),
                     const SizedBox(height: 8),
-                    _buildTextField(
-                        controller: _contactNumberController,
-                        hint: 'Enter your contact number',
-                        keyboardType: TextInputType.phone),
+                    _buildContactField(),
+                    const SizedBox(height: 6),
+                    // Helper text
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${_selectedCountry.name}: ${_selectedCountry.digitCount} digits · ${_selectedCountry.hint}',
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xFF888888)),
+                      ),
+                    ),
                     const SizedBox(height: 16),
 
-                    // Email
+                    // ── Email ──────────────────────────────────
                     _buildFieldLabel('Email *', Icons.email_outlined),
                     const SizedBox(height: 8),
                     _buildTextField(
@@ -272,7 +446,7 @@ class _SignupPageState extends State<SignupPage> {
                         keyboardType: TextInputType.emailAddress),
                     const SizedBox(height: 16),
 
-                    // Password
+                    // ── Password ───────────────────────────────
                     _buildFieldLabel('Password *', Icons.lock_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
@@ -286,14 +460,15 @@ class _SignupPageState extends State<SignupPage> {
                               : Icons.visibility_outlined,
                           color: const Color(0xFF888888), size: 20,
                         ),
-                        onPressed: () =>
-                            setState(() => _obscurePassword = !_obscurePassword),
+                        onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                     const SizedBox(height: 16),
 
-                    // Confirm Password
-                    _buildFieldLabel('Confirm Password *', Icons.lock_outline),
+                    // ── Confirm Password ───────────────────────
+                    _buildFieldLabel(
+                        'Confirm Password *', Icons.lock_outline),
                     const SizedBox(height: 8),
                     _buildTextField(
                       controller: _confirmPasswordController,
@@ -307,12 +482,13 @@ class _SignupPageState extends State<SignupPage> {
                           color: const Color(0xFF888888), size: 20,
                         ),
                         onPressed: () => setState(
-                            () => _obscureConfirmPassword = !_obscureConfirmPassword),
+                            () => _obscureConfirmPassword =
+                                !_obscureConfirmPassword),
                       ),
                     ),
                     const SizedBox(height: 12),
 
-                    // Info note
+                    // ── Info note ──────────────────────────────
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -339,6 +515,7 @@ class _SignupPageState extends State<SignupPage> {
 
                     const SizedBox(height: 28),
 
+                    // ── Submit button ──────────────────────────
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -376,6 +553,70 @@ class _SignupPageState extends State<SignupPage> {
     );
   }
 
+  // ── Contact field with country code prefix ────────────────────
+  Widget _buildContactField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.withOpacity(0.15), width: 1),
+      ),
+      child: Row(
+        children: [
+          // Country code selector
+          GestureDetector(
+            onTap: _showCountryPicker,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              decoration: BoxDecoration(
+                border: Border(
+                  right: BorderSide(
+                      color: Colors.grey.withOpacity(0.15), width: 1),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_selectedCountry.flag,
+                      style: const TextStyle(fontSize: 18)),
+                  const SizedBox(width: 6),
+                  Text(_selectedCountry.dialCode,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A1A1A))),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_drop_down,
+                      size: 18, color: Color(0xFF888888)),
+                ],
+              ),
+            ),
+          ),
+          // Number input
+          Expanded(
+            child: TextField(
+              controller: _contactNumberController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(_selectedCountry.digitCount),
+              ],
+              style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
+              decoration: InputDecoration(
+                hintText: _selectedCountry.hint,
+                hintStyle: const TextStyle(
+                    fontSize: 13, color: Color(0xFFBBBBBB)),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFieldLabel(String label, IconData icon) {
     return Row(
       children: [
@@ -404,7 +645,8 @@ class _SignupPageState extends State<SignupPage> {
       style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFFBBBBBB)),
+        hintStyle:
+            const TextStyle(fontSize: 13, color: Color(0xFFBBBBBB)),
         filled: true,
         fillColor: Colors.white,
         suffixIcon: suffixIcon,
@@ -415,11 +657,13 @@ class _SignupPageState extends State<SignupPage> {
             borderSide: BorderSide.none),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey.withOpacity(0.15), width: 1),
+          borderSide:
+              BorderSide(color: Colors.grey.withOpacity(0.15), width: 1),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF27AE60), width: 1.5),
+          borderSide:
+              const BorderSide(color: Color(0xFF27AE60), width: 1.5),
         ),
       ),
     );
