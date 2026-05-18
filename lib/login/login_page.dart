@@ -79,7 +79,17 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       final data = doc.data()!;
-      final status = (data['status'] ?? 'approved').toString();
+
+
+      final role = (data['role'] ?? '').toString();
+        if (role == 'Admin') {
+        await _auth.signOut();
+        setState(() => _isLoading = false);
+        _showError('Access denied.');
+        return;
+      }
+
+final status = (data['status'] ?? 'approved').toString();
 
       if (status == 'pending') {
         await _auth.signOut();
