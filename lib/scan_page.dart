@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
 import 'analysis_page.dart';
+import 'model_service.dart';
 
 class ScanPage extends StatefulWidget {
   final String farmerName;
@@ -33,61 +33,46 @@ class _ScanPageState extends State<ScanPage> {
   // Model is a ResNet50-based classifier with 6 output classes.
   // Input:  [1, 224, 224, 3]  float32  (ResNet50 preprocessing)
   // Output: [1, 6]            float32  (softmax probabilities)
-  static const String _modelPath =
-      'assets/models/canevision_v1_surgical_resnet.tflite';
   static const int _inputSize = 224;
 
   // Class labels — must match your training label order
   static const List<String> _classLabels = [
-    'FA',   // index 0
-    'FB',  // index 1
-    'FC',   // index 2
-    'FD',  // index 3
-    'FE',   // index 4
-    'FF',   // index 5
+    'FA', // index 0
+    'FB', // index 1
+    'FC', // index 2
+    'FD', // index 3
+    'FE', // index 4
+    'FF', // index 5
   ];
-
-  Interpreter? _interpreter;
 
   @override
   void initState() {
     super.initState();
-    _loadModel();
+    // Ensure model is loaded when the page opens
+    _ensureModelLoaded();
   }
 
-  @override
-  void dispose() {
-    _interpreter?.close();
-    super.dispose();
-  }
-
-  // ── Load TFLite model from assets ────────────────────────────
-  Future<void> _loadModel() async {
-    try {
-      _interpreter = await Interpreter.fromAsset(_modelPath);
-    } catch (e) {
-      debugPrint('Failed to load TFLite model: $e');
+  Future<void> _ensureModelLoaded() async {
+    if (!ModelService().isLoaded) {
+      await ModelService().loadModel();
     }
   }
 
   // ── Pre-process image → [1, 224, 224, 3] float32 tensor ──────
   // Uses ResNet50 Keras preprocess_input: subtract ImageNet channel means.
-  // Compatible with image package v4.x (pixel accessors via .r .g .b).
   Float32List _preprocessImage(File imageFile) {
     final rawBytes = imageFile.readAsBytesSync();
     final img.Image? decoded = img.decodeImage(rawBytes);
     if (decoded == null) throw Exception('Could not decode image');
 
-    // Resize to 224×224
-    final image = img.copyResize(decoded, width: _inputSize, height: _inputSize);
+    final image =
+        img.copyResize(decoded, width: _inputSize, height: _inputSize);
 
-    // Fill [1, 224, 224, 3] float32 buffer
     final input = Float32List(_inputSize * _inputSize * 3);
     int idx = 0;
     for (int y = 0; y < _inputSize; y++) {
       for (int x = 0; x < _inputSize; x++) {
         final pixel = image.getPixel(x, y);
-        // image v4.x: use .r .g .b (num) instead of deprecated getRed/getGreen/getBlue
         input[idx++] = pixel.r.toDouble() - 123.68;
         input[idx++] = pixel.g.toDouble() - 116.779;
         input[idx++] = pixel.b.toDouble() - 103.939;
@@ -97,25 +82,25 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   // ── Build nested List for tflite_flutter input ────────────────
-  // tflite_flutter expects List<List<List<List<double>>>> shaped [1,H,W,3].
-  // We avoid the .reshape() extension (requires tflite_flutter import context)
-  // and build the structure manually from the flat Float32List.
   List<List<List<List<double>>>> _buildInputTensor(Float32List flat) {
-    return List.generate(1, (_) =>
-      List.generate(_inputSize, (y) =>
-        List.generate(_inputSize, (x) {
+    return List.generate(
+      1,
+      (_) => List.generate(
+        _inputSize,
+        (y) => List.generate(_inputSize, (x) {
           final base = (y * _inputSize + x) * 3;
           return [flat[base], flat[base + 1], flat[base + 2]];
-        })
-      )
+        }),
+      ),
     );
   }
 
   // ── Run on-device TFLite inference ───────────────────────────
   Future<Map<String, dynamic>?> _runInference(File imageFile) async {
-    if (_interpreter == null) {
-      await _loadModel();
-      if (_interpreter == null) {
+    // Ensure the model is loaded via ModelService (singleton)
+    if (!ModelService().isLoaded) {
+      await ModelService().loadModel();
+      if (!ModelService().isLoaded) {
         _showError('Model not loaded. Please restart the app.');
         return null;
       }
@@ -125,17 +110,15 @@ class _ScanPageState extends State<ScanPage> {
       final flat = _preprocessImage(imageFile);
       final inputTensor = _buildInputTensor(flat);
 
-      // Output: [1, numClasses] — plain nested list
       final outputTensor = List.generate(
         1,
         (_) => List.filled(_classLabels.length, 0.0),
       );
 
-      _interpreter!.run(inputTensor, outputTensor);
+      ModelService().interpreter.run(inputTensor, outputTensor);
 
-      final probabilities = outputTensor[0]; // List<double> length 6
+      final probabilities = outputTensor[0];
 
-      // Find top prediction
       int topIndex = 0;
       double topProb = probabilities[0];
       for (int i = 1; i < probabilities.length; i++) {
@@ -149,8 +132,8 @@ class _ScanPageState extends State<ScanPage> {
         _classLabels.length,
         (i) => {'class': _classLabels[i], 'confidence': probabilities[i]},
       )..sort(
-          (a, b) => (b['confidence'] as double)
-              .compareTo(a['confidence'] as double),
+          (a, b) =>
+              (b['confidence'] as double).compareTo(a['confidence'] as double),
         );
 
       return {
@@ -170,15 +153,6 @@ class _ScanPageState extends State<ScanPage> {
       return (result['topClass'] as String? ?? 'N/A').toUpperCase();
     } catch (_) {
       return 'N/A';
-    }
-  }
-
-  // ── Parse confidence from inference result ────────────────────
-  double _parseConfidence(Map<String, dynamic> result) {
-    try {
-      return (result['topConfidence'] as double? ?? 0.0) * 100;
-    } catch (_) {
-      return 0.0;
     }
   }
 
@@ -226,22 +200,6 @@ class _ScanPageState extends State<ScanPage> {
     if (result != null && mounted) {
       final grade = _parseGrade(result);
 
-      // Derive quality label from grade
-      String quality;
-      if (grade == 'FA') {
-        quality = 'Excellent';
-      } else if (grade == 'FB') {
-        quality = 'Very Good';
-      } else if (grade == 'FC') {
-        quality = 'Good';
-      } else if (grade == 'FD') {
-        quality = 'Fair';
-      } else if (grade == 'FE') {
-        quality = 'Below Average';
-      } else {
-        quality = 'Poor';
-      }
-
       // Save grade to Firestore
       await FirebaseFirestore.instance
           .collection('farmers')
@@ -275,167 +233,6 @@ class _ScanPageState extends State<ScanPage> {
     }
   }
 
-  // ── Result Dialog ─────────────────────────────────────────────
-  void _showResultDialog(
-      String grade, double confidence, Map<String, dynamic> rawResult) {
-    Color gradeColor;
-    if (grade == 'FA' || grade == 'FB') {
-      gradeColor = const Color(0xFF11BD51); // Green
-    } else if (grade == 'FC' || grade == 'FD') {
-      gradeColor = const Color(0xFFF39C12); // Orange
-    } else {
-      gradeColor = const Color(0xFFE74C3C); // Red
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFDDDDDD),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              width: 90,
-              height: 90,
-              decoration: BoxDecoration(
-                color: gradeColor.withOpacity(0.12),
-                shape: BoxShape.circle,
-                border: Border.all(color: gradeColor, width: 3),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                grade,
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: gradeColor),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Scan Complete!',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1A1A1A)),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              widget.farmerName,
-              style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF555555),
-                  fontWeight: FontWeight.w500),
-            ),
-            Text(
-              'Farm ID: ${widget.farmId}',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF888888)),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF7F7F7),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Confidence',
-                          style:
-                              TextStyle(fontSize: 12, color: Color(0xFF888888))),
-                      Text('${confidence.toStringAsFixed(1)}%',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: gradeColor)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: confidence / 100,
-                      minHeight: 8,
-                      backgroundColor: const Color(0xFFE0E0E0),
-                      valueColor: AlwaysStoppedAnimation<Color>(gradeColor),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: gradeColor.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: gradeColor.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle_outline, color: gradeColor, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "Grade saved to ${widget.farmerName}'s profile.",
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: gradeColor,
-                          fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF11BD51),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('Done',
-                    style:
-                        TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ── Image Preview Bottom Sheet ────────────────────────────────
   void _showImagePreview() {
     showModalBottomSheet(
@@ -464,15 +261,19 @@ class _ScanPageState extends State<ScanPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text('Preview',
-                  style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A))),
+              const Text(
+                'Preview',
+                style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A1A)),
+              ),
               const SizedBox(height: 4),
-              Text('Scanning for: ${widget.farmerName}',
-                  style:
-                      const TextStyle(fontSize: 12, color: Color(0xFF888888))),
+              Text(
+                'Scanning for: ${widget.farmerName}',
+                style:
+                    const TextStyle(fontSize: 12, color: Color(0xFF888888)),
+              ),
               const SizedBox(height: 16),
               Expanded(
                 child: Padding(
@@ -812,8 +613,7 @@ class _ScanPageState extends State<ScanPage> {
                                   color: Color(0xFF1A1A1A))),
                           const SizedBox(height: 10),
                           const Padding(
-                            padding:
-                                EdgeInsets.symmetric(horizontal: 40),
+                            padding: EdgeInsets.symmetric(horizontal: 40),
                             child: Text(
                               'Take a photo or upload an image of the sugarcane to analyze its grade',
                               textAlign: TextAlign.center,
@@ -880,51 +680,6 @@ class _ScanPageState extends State<ScanPage> {
                         ],
                       ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatCard({
-    required String label,
-    required String value,
-    required bool showArrow,
-  }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 6,
-                offset: const Offset(0, 2))
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style:
-                    const TextStyle(fontSize: 9, color: Color(0xFF888888))),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Text(value,
-                    style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A1A))),
-                if (showArrow) ...[
-                  const SizedBox(width: 4),
-                  const Icon(Icons.arrow_outward,
-                      size: 13, color: Color(0xFF11BD51)),
-                ],
-              ],
             ),
           ],
         ),

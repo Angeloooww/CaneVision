@@ -5,12 +5,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase/firebase_options.dart';
 import 'login/login_page.dart';
 import 'main_page.dart';
+import 'model_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await ModelService().loadModel();
   runApp(const CaneVisionApp());
 }
 
