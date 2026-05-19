@@ -30,7 +30,7 @@ class _ScanPageState extends State<ScanPage> {
 
   // Roboflow API config
   static const String _apiUrl =
-      'https://serverless.roboflow.com/canevision-5nrlh/1';
+      'https://serverless.roboflow.com/canevision-5nrlh/4';
   static const String _apiKey = 'gTM1eaFDdxuiC0P4h4J6';
 
   // ── Take Photo using Camera ───────────────────────────────────
