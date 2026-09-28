@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -48,6 +50,16 @@ class _CertificatePageState extends State<CertificatePage> {
   String _saveError = '';
   String _savedCertId = '';
   String _uploadedPhotoUrl = '';
+
+  // ── Email sending state ──────────────────────────────────────
+  bool _isSending = false;
+
+  // EmailJS settings — paste yours from the EmailJS dashboard
+  static const String _emailServiceId = 'service_y948yha';
+  static const String _emailTemplateId = 'template_bbk1blh';
+  static const String _emailPublicKey = 'iMcjpWhNeoAunB5k_';
+  static const String _emailPrivateKey = 'dcIRLGbO-5mTBb-kFHruN';
+
 
   @override
   void initState() {
@@ -148,6 +160,66 @@ class _CertificatePageState extends State<CertificatePage> {
           _saveError = e.toString();
         });
       }
+    }
+  }
+
+  // ── Send certificate to farmer's registered email (EmailJS) ───
+  Future<void> _sendToFarmer() async {
+    if (_savedCertId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          _snackBar('Wait for the certificate to finish saving.'));
+      return;
+    }
+    setState(() => _isSending = true);
+    try {
+      // Get the farmer's registered email from Firestore
+      final farmerDoc = await FirebaseFirestore.instance
+          .collection('farmers')
+          .doc(widget.farmerDocId)
+          .get();
+      final email = (farmerDoc.data()?['email'] ?? '').toString().trim();
+      if (email.isEmpty) {
+        throw Exception('This farmer has no registered email.');
+      }
+
+      final res = await http.post(
+        Uri.parse('https://api.emailjs.com/api/v1.0/email/send'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'service_id': _emailServiceId,
+          'template_id': _emailTemplateId,
+          'user_id': _emailPublicKey,
+          'accessToken': _emailPrivateKey,
+          'template_params': {
+            'to_email': email,
+            'farmer_name': widget.farmerName,
+            'cert_id': _savedCertId,
+            'farm_id': widget.farmId,
+            'grade': widget.grade,
+            'quality': widget.quality,
+            'trash_discount': widget.trashDiscount.toString(),
+            'remark_code': widget.remarkCode,
+            'remark_full': widget.remarkFull,
+            'grader_name': _graderName,
+            'date': _today,
+          },
+        }),
+      );
+
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(_snackBar('Certificate emailed to $email'));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+            _snackBar('Email failed (${res.statusCode}): ${res.body}'));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(_snackBar('Send failed: $e'));
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -550,10 +622,8 @@ class _CertificatePageState extends State<CertificatePage> {
                             const SizedBox(height: 10),
                             _buildActionButton(
                               icon: Icons.send_outlined,
-                              label: 'Send to Farmer',
-                              onTap: () => ScaffoldMessenger.of(context)
-                                  .showSnackBar(
-                                      _snackBar('Send feature coming soon!')),
+                              label: _isSending ? 'Sending…' : 'Send to Farmer',
+                              onTap: _isSending ? () {} : _sendToFarmer,
                             ),
                             const SizedBox(height: 10),
                             _buildActionButton(
