@@ -11,7 +11,8 @@ class MainPage extends StatefulWidget {
   State<MainPage> createState() => _MainPageState();
 }
 
-class _MainPageState extends State<MainPage> {
+class _MainPageState extends State<MainPage>
+    with SingleTickerProviderStateMixin {
   int _selectedTab = 0; // 0 = Scan, 1 = Farmers
   int _selectedFarmerTab = 0; // 0 = Registered, 1 = New Farmer
 
@@ -34,9 +35,19 @@ class _MainPageState extends State<MainPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  // ── Drag handle / expandable sheet ────────────────────────────
+  // 0.0 = normal (header visible), 1.0 = expanded (card covers the screen)
+  late final AnimationController _sheetController;
+  final GlobalKey _headerKey = GlobalKey();
+  double _headerHeight = 300; // updated with the real height at drag start
+
   @override
   void initState() {
     super.initState();
+    _sheetController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.toLowerCase());
     });
@@ -44,12 +55,50 @@ class _MainPageState extends State<MainPage> {
 
   @override
   void dispose() {
+    _sheetController.dispose();
     _searchController.dispose();
     _nameController.dispose();
     _farmIdController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
     super.dispose();
+  }
+
+  void _measureHeader() {
+    final box = _headerKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize && box.size.height > 0) {
+      _headerHeight = box.size.height;
+    }
+  }
+
+  void _onHandleDragStart(DragStartDetails details) {
+    _sheetController.stop();
+    _measureHeader();
+  }
+
+  void _onHandleDragUpdate(DragUpdateDetails details) {
+    // Dragging up (negative dy) expands, dragging down collapses.
+    final delta = -details.delta.dy / _headerHeight;
+    _sheetController.value = (_sheetController.value + delta).clamp(0.0, 1.0);
+  }
+
+  void _onHandleDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    double target;
+    if (velocity < -300) {
+      target = 1.0;
+    } else if (velocity > 300) {
+      target = 0.0;
+    } else {
+      target = _sheetController.value > 0.5 ? 1.0 : 0.0;
+    }
+    _sheetController.animateTo(target, curve: Curves.easeOut);
+  }
+
+  void _toggleSheet() {
+    _measureHeader();
+    final target = _sheetController.value > 0.5 ? 0.0 : 1.0;
+    _sheetController.animateTo(target, curve: Curves.easeInOut);
   }
 
   // ── Logout ────────────────────────────────────────────────────
@@ -171,168 +220,199 @@ class _MainPageState extends State<MainPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Top App Bar ───────────────────────────────────────
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Row(
+            // ── Collapsible header (shrinks as the sheet is dragged up) ──
+            AnimatedBuilder(
+              animation: _sheetController,
+              builder: (context, child) {
+                final progress = _sheetController.value;
+                return ClipRect(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    heightFactor: 1.0 - progress,
+                    child: Opacity(
+                      opacity: (1.0 - progress * 1.4).clamp(0.0, 1.0),
+                      child: child,
+                    ),
+                  ),
+                );
+              },
+              child: Column(
+                key: _headerKey,
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                          color: const Color(0xFF11BD51), width: 2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.asset('assets/images/logo.png',
-                          width: 40, height: 40, fit: BoxFit.cover),
+                  // ── Top App Bar ───────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 16),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                                color: const Color(0xFF11BD51), width: 2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.asset('assets/images/logo.png',
+                                width: 40, height: 40, fit: BoxFit.cover),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text('CaneVision',
+                            style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1A1A1A))),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: _logout,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              boxShadow: [
+                                BoxShadow(
+                                    color: Colors.black.withOpacity(0.06),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2))
+                              ],
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.logout,
+                                    size: 16, color: Colors.redAccent),
+                                SizedBox(width: 5),
+                                Text('Logout',
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.redAccent)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  const Text('CaneVision',
-                      style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1A1A1A))),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: _logout,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.black.withOpacity(0.06),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2))
-                        ],
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.logout, size: 16, color: Colors.redAccent),
-                          SizedBox(width: 5),
-                          Text('Logout',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.redAccent)),
-                        ],
-                      ),
+
+                  // ── Welcome ───────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text('Welcome, $displayName!',
+                        style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF444444),
+                            fontWeight: FontWeight.w500)),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // ── Stats Row ─────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: _firestore.collection('farmers').snapshots(),
+                      builder: (context, snapshot) {
+                        final docs = snapshot.hasData
+                            ? snapshot.data!.docs
+                            : <QueryDocumentSnapshot>[];
+                        final count = docs.length;
+
+                        // Grade → numeric rank (FA best=1, FF worst=6)
+                        const gradeRank = {
+                          'FA': 1, 'FB': 2, 'FC': 3,
+                          'FD': 4, 'FE': 5, 'FF': 6,
+                        };
+                        const rankToGrade = {
+                          1: 'FA', 2: 'FB', 3: 'FC',
+                          4: 'FD', 5: 'FE', 6: 'FF',
+                        };
+
+                        // Only farmers with a real grade assigned
+                        final graded = docs.where((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final g = (data['grade'] ?? '--')
+                              .toString()
+                              .toUpperCase();
+                          return gradeRank.containsKey(g);
+                        }).toList();
+
+                        String avgGrade = '--';
+                        if (graded.isNotEmpty) {
+                          final total = graded.fold<int>(0, (sum, doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            final g = (data['grade'] ?? '')
+                                .toString()
+                                .toUpperCase();
+                            return sum + (gradeRank[g] ?? 0);
+                          });
+                          final avg =
+                              (total / graded.length).round().clamp(1, 6);
+                          avgGrade = rankToGrade[avg] ?? '--';
+                        }
+
+                        return Row(
+                          children: [
+                            _buildStatCard(
+                                label: "Today's Score",
+                                value: '--',
+                                showArrow: false),
+                            const SizedBox(width: 10),
+                            _buildStatCard(
+                                label: 'Avg Grade',
+                                value: avgGrade,
+                                showArrow: avgGrade != '--'),
+                            const SizedBox(width: 10),
+                            _buildStatCard(
+                                label: 'Farmers',
+                                value: count.toString(),
+                                showArrow: false),
+                          ],
+                        );
+                      },
                     ),
                   ),
+
+                  const SizedBox(height: 14),
+
+                  // ── Scan / Farmers Tab Buttons ────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildTabButton(
+                            label: 'Scan',
+                            icon: Icons.home_outlined,
+                            isActive: _selectedTab == 0,
+                            onTap: () => setState(() => _selectedTab = 0),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTabButton(
+                            label: 'Farmers',
+                            icon: Icons.people_outline,
+                            isActive: _selectedTab == 1,
+                            onTap: () => setState(() => _selectedTab = 1),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
                 ],
               ),
             ),
 
-            // ── Welcome ───────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text('Welcome, $displayName!',
-                  style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF444444),
-                      fontWeight: FontWeight.w500)),
-            ),
-
-            const SizedBox(height: 14),
-
-            // ── Stats Row ─────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _firestore.collection('farmers').snapshots(),
-                builder: (context, snapshot) {
-                  final docs =
-                      snapshot.hasData ? snapshot.data!.docs : <QueryDocumentSnapshot>[];
-                  final count = docs.length;
-
-                  // Grade → numeric rank (FA best=1, FF worst=6)
-                  const gradeRank = {
-                    'FA': 1, 'FB': 2, 'FC': 3,
-                    'FD': 4, 'FE': 5, 'FF': 6,
-                  };
-                  const rankToGrade = {
-                    1: 'FA', 2: 'FB', 3: 'FC',
-                    4: 'FD', 5: 'FE', 6: 'FF',
-                  };
-
-                  // Only farmers with a real grade assigned
-                  final graded = docs.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final g = (data['grade'] ?? '--').toString().toUpperCase();
-                    return gradeRank.containsKey(g);
-                  }).toList();
-
-                  String avgGrade = '--';
-                  if (graded.isNotEmpty) {
-                    final total = graded.fold<int>(0, (sum, doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final g = (data['grade'] ?? '').toString().toUpperCase();
-                      return sum + (gradeRank[g] ?? 0);
-                    });
-                    final avg = (total / graded.length).round().clamp(1, 6);
-                    avgGrade = rankToGrade[avg] ?? '--';
-                  }
-
-                  return Row(
-                    children: [
-                      _buildStatCard(
-                          label: "Today's Score",
-                          value: '--',
-                          showArrow: false),
-                      const SizedBox(width: 10),
-                      _buildStatCard(
-                          label: 'Avg Grade',
-                          value: avgGrade,
-                          showArrow: avgGrade != '--'),
-                      const SizedBox(width: 10),
-                      _buildStatCard(
-                          label: 'Farmers',
-                          value: count.toString(),
-                          showArrow: false),
-                    ],
-                  );
-                },
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
-            // ── Scan / Farmers Tab Buttons ────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildTabButton(
-                      label: 'Scan',
-                      icon: Icons.home_outlined,
-                      isActive: _selectedTab == 0,
-                      onTap: () => setState(() => _selectedTab = 0),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildTabButton(
-                      label: 'Farmers',
-                      icon: Icons.people_outline,
-                      isActive: _selectedTab == 1,
-                      onTap: () => setState(() => _selectedTab = 1),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // ── White Card ────────────────────────────────────────
+            // ── White Card (with drag handle) ─────────────────────
             Expanded(
               child: Container(
                 width: double.infinity,
@@ -343,12 +423,44 @@ class _MainPageState extends State<MainPage> {
                     topRight: Radius.circular(24),
                   ),
                 ),
-                child: _selectedTab == 0
-                    ? _buildScanTab()
-                    : _buildFarmersTab(),
+                child: Column(
+                  children: [
+                    _buildDragHandle(),
+                    Expanded(
+                      child: _selectedTab == 0
+                          ? _buildScanTab()
+                          : _buildFarmersTab(),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ── Drag Handle ───────────────────────────────────────────────
+  Widget _buildDragHandle() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggleSheet,
+      onVerticalDragStart: _onHandleDragStart,
+      onVerticalDragUpdate: _onHandleDragUpdate,
+      onVerticalDragEnd: _onHandleDragEnd,
+      child: SizedBox(
+        width: double.infinity,
+        height: 28, // generous touch target
+        child: Center(
+          child: Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD5D5D5),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
         ),
       ),
     );
@@ -362,7 +474,7 @@ class _MainPageState extends State<MainPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(20, 22, 20, 2),
+          padding: EdgeInsets.fromLTRB(20, 6, 20, 2),
           child: Text('Select Farmer',
               style: TextStyle(
                   fontSize: 18,
@@ -514,7 +626,7 @@ class _MainPageState extends State<MainPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(20, 22, 20, 2),
+          padding: EdgeInsets.fromLTRB(20, 6, 20, 2),
           child: Text('Select Farmer',
               style: TextStyle(
                   fontSize: 18,
