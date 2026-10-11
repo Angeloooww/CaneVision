@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'main.dart' show CaneVisionApp, main; // <-- change LoginPage if your class is named differently
 import 'scan_page.dart';
 import 'new_farmer_page.dart';
 
@@ -126,7 +127,23 @@ class _MainPageState extends State<MainPage>
         ],
       ),
     );
-    if (confirm == true) await _auth.signOut();
+
+    if (confirm != true) return;
+
+    try {
+      await _auth.signOut(); // wait until the session is fully cleared
+    } catch (e) {
+      _showSnackBar('Failed to log out. Please try again.', isError: true);
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Remove ALL previous routes so Back can't return to the dashboard
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const CaneVisionApp()),
+      (route) => false,
+    );
   }
 
   // ── Save New Farmer ───────────────────────────────────────────
@@ -214,228 +231,232 @@ class _MainPageState extends State<MainPage>
     final user = _auth.currentUser;
     final displayName = user?.displayName ?? 'Grader';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFE8F8EF),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Collapsible header (shrinks as the sheet is dragged up) ──
-            AnimatedBuilder(
-              animation: _sheetController,
-              builder: (context, child) {
-                final progress = _sheetController.value;
-                return ClipRect(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    heightFactor: 1.0 - progress,
-                    child: Opacity(
-                      opacity: (1.0 - progress * 1.4).clamp(0.0, 1.0),
-                      child: child,
+    // canPop: false → the Back button can never leave the dashboard
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFE8F8EF),
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Collapsible header (shrinks as the sheet is dragged up) ──
+              AnimatedBuilder(
+                animation: _sheetController,
+                builder: (context, child) {
+                  final progress = _sheetController.value;
+                  return ClipRect(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      heightFactor: 1.0 - progress,
+                      child: Opacity(
+                        opacity: (1.0 - progress * 1.4).clamp(0.0, 1.0),
+                        child: child,
+                      ),
                     ),
-                  ),
-                );
-              },
-              child: Column(
-                key: _headerKey,
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Top App Bar ───────────────────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 16),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                                color: const Color(0xFF11BD51), width: 2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Image.asset('assets/images/logo.png',
-                                width: 40, height: 40, fit: BoxFit.cover),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text('CaneVision',
-                            style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1A1A1A))),
-                        const Spacer(),
-                        GestureDetector(
-                          onTap: _logout,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
+                  );
+                },
+                child: Column(
+                  key: _headerKey,
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Top App Bar ───────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              boxShadow: [
-                                BoxShadow(
-                                    color: Colors.black.withOpacity(0.06),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 2))
-                              ],
+                              border: Border.all(
+                                  color: const Color(0xFF11BD51), width: 2),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.logout,
-                                    size: 16, color: Colors.redAccent),
-                                SizedBox(width: 5),
-                                Text('Logout',
-                                    style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.redAccent)),
-                              ],
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.asset('assets/images/logo.png',
+                                  width: 40, height: 40, fit: BoxFit.cover),
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 10),
+                          const Text('CaneVision',
+                              style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1A1A1A))),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: _logout,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2))
+                                ],
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.logout,
+                                      size: 16, color: Colors.redAccent),
+                                  SizedBox(width: 5),
+                                  Text('Logout',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.redAccent)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
 
-                  // ── Welcome ───────────────────────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Text('Welcome, $displayName!',
-                        style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF444444),
-                            fontWeight: FontWeight.w500)),
-                  ),
+                    // ── Welcome ───────────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text('Welcome, $displayName!',
+                          style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF444444),
+                              fontWeight: FontWeight.w500)),
+                    ),
 
-                  const SizedBox(height: 14),
+                    const SizedBox(height: 14),
 
-                  // ── Stats Row ─────────────────────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: _firestore.collection('farmers').snapshots(),
-                      builder: (context, snapshot) {
-                        final docs = snapshot.hasData
-                            ? snapshot.data!.docs
-                            : <QueryDocumentSnapshot>[];
-                        final count = docs.length;
+                    // ── Stats Row ─────────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: StreamBuilder<QuerySnapshot>(
+                        stream: _firestore.collection('farmers').snapshots(),
+                        builder: (context, snapshot) {
+                          final docs = snapshot.hasData
+                              ? snapshot.data!.docs
+                              : <QueryDocumentSnapshot>[];
+                          final count = docs.length;
 
-                        // Grade → numeric rank (FA best=1, FF worst=6)
-                        const gradeRank = {
-                          'FA': 1, 'FB': 2, 'FC': 3,
-                          'FD': 4, 'FE': 5, 'FF': 6,
-                        };
-                        const rankToGrade = {
-                          1: 'FA', 2: 'FB', 3: 'FC',
-                          4: 'FD', 5: 'FE', 6: 'FF',
-                        };
+                          // Grade → numeric rank (FA best=1, FF worst=6)
+                          const gradeRank = {
+                            'FA': 1, 'FB': 2, 'FC': 3,
+                            'FD': 4, 'FE': 5, 'FF': 6,
+                          };
+                          const rankToGrade = {
+                            1: 'FA', 2: 'FB', 3: 'FC',
+                            4: 'FD', 5: 'FE', 6: 'FF',
+                          };
 
-                        // Only farmers with a real grade assigned
-                        final graded = docs.where((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final g = (data['grade'] ?? '--')
-                              .toString()
-                              .toUpperCase();
-                          return gradeRank.containsKey(g);
-                        }).toList();
-
-                        String avgGrade = '--';
-                        if (graded.isNotEmpty) {
-                          final total = graded.fold<int>(0, (sum, doc) {
+                          // Only farmers with a real grade assigned
+                          final graded = docs.where((doc) {
                             final data = doc.data() as Map<String, dynamic>;
-                            final g = (data['grade'] ?? '')
+                            final g = (data['grade'] ?? '--')
                                 .toString()
                                 .toUpperCase();
-                            return sum + (gradeRank[g] ?? 0);
-                          });
-                          final avg =
-                              (total / graded.length).round().clamp(1, 6);
-                          avgGrade = rankToGrade[avg] ?? '--';
-                        }
+                            return gradeRank.containsKey(g);
+                          }).toList();
 
-                        return Row(
-                          children: [
-                            _buildStatCard(
-                                label: "Today's Score",
-                                value: '--',
-                                showArrow: false),
-                            const SizedBox(width: 10),
-                            _buildStatCard(
-                                label: 'Avg Grade',
-                                value: avgGrade,
-                                showArrow: avgGrade != '--'),
-                            const SizedBox(width: 10),
-                            _buildStatCard(
-                                label: 'Farmers',
-                                value: count.toString(),
-                                showArrow: false),
-                          ],
-                        );
-                      },
+                          String avgGrade = '--';
+                          if (graded.isNotEmpty) {
+                            final total = graded.fold<int>(0, (sum, doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final g = (data['grade'] ?? '')
+                                  .toString()
+                                  .toUpperCase();
+                              return sum + (gradeRank[g] ?? 0);
+                            });
+                            final avg =
+                                (total / graded.length).round().clamp(1, 6);
+                            avgGrade = rankToGrade[avg] ?? '--';
+                          }
+
+                          return Row(
+                            children: [
+                              _buildStatCard(
+                                  label: "Today's Score",
+                                  value: '--',
+                                  showArrow: false),
+                              const SizedBox(width: 10),
+                              _buildStatCard(
+                                  label: 'Avg Grade',
+                                  value: avgGrade,
+                                  showArrow: avgGrade != '--'),
+                              const SizedBox(width: 10),
+                              _buildStatCard(
+                                  label: 'Farmers',
+                                  value: count.toString(),
+                                  showArrow: false),
+                            ],
+                          );
+                        },
+                      ),
                     ),
-                  ),
 
-                  const SizedBox(height: 14),
+                    const SizedBox(height: 14),
 
-                  // ── Scan / Farmers Tab Buttons ────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _buildTabButton(
-                            label: 'Scan',
-                            icon: Icons.home_outlined,
-                            isActive: _selectedTab == 0,
-                            onTap: () => setState(() => _selectedTab = 0),
+                    // ── Scan / Farmers Tab Buttons ────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _buildTabButton(
+                              label: 'Scan',
+                              icon: Icons.home_outlined,
+                              isActive: _selectedTab == 0,
+                              onTap: () => setState(() => _selectedTab = 0),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildTabButton(
-                            label: 'Farmers',
-                            icon: Icons.people_outline,
-                            isActive: _selectedTab == 1,
-                            onTap: () => setState(() => _selectedTab = 1),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildTabButton(
+                              label: 'Farmers',
+                              icon: Icons.people_outline,
+                              isActive: _selectedTab == 1,
+                              onTap: () => setState(() => _selectedTab = 1),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
 
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
-
-            // ── White Card (with drag handle) ─────────────────────
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(24),
-                    topRight: Radius.circular(24),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _buildDragHandle(),
-                    Expanded(
-                      child: _selectedTab == 0
-                          ? _buildScanTab()
-                          : _buildFarmersTab(),
-                    ),
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
-            ),
-          ],
+
+              // ── White Card (with drag handle) ─────────────────────
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildDragHandle(),
+                      Expanded(
+                        child: _selectedTab == 0
+                            ? _buildScanTab()
+                            : _buildFarmersTab(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
