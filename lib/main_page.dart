@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'main.dart' show CaneVisionApp, main; // <-- change LoginPage if your class is named differently
+import 'login/login_page.dart';
 import 'scan_page.dart';
 import 'new_farmer_page.dart';
 
@@ -103,6 +103,9 @@ class _MainPageState extends State<MainPage>
   }
 
   // ── Logout ────────────────────────────────────────────────────
+  // Signs out, then replaces the WHOLE navigation stack with a fresh
+  // LoginPage. (Do NOT push CaneVisionApp here - it is a MaterialApp, and
+  // nesting one inside another causes the black screen.)
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -128,7 +131,7 @@ class _MainPageState extends State<MainPage>
       ),
     );
 
-    if (confirm != true) return;
+    if (confirm != true || !mounted) return;
 
     try {
       await _auth.signOut(); // wait until the session is fully cleared
@@ -139,9 +142,9 @@ class _MainPageState extends State<MainPage>
 
     if (!mounted) return;
 
-    // Remove ALL previous routes so Back can't return to the dashboard
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const CaneVisionApp()),
+    // Remove ALL previous routes and show a fresh LoginPage
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
       (route) => false,
     );
   }
