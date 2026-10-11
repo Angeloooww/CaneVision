@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login/login_page.dart';
 import 'scan_page.dart';
 import 'new_farmer_page.dart';
+import 'hamburger/app_drawer.dart';
+import 'hamburger/settings_page.dart'; // for AppSettings
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -16,6 +18,9 @@ class _MainPageState extends State<MainPage>
     with SingleTickerProviderStateMixin {
   int _selectedTab = 0; // 0 = Scan, 1 = Farmers
   int _selectedFarmerTab = 0; // 0 = Registered, 1 = New Farmer
+
+  // Hamburger drawer
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   // Search
   final TextEditingController _searchController = TextEditingController();
@@ -107,29 +112,37 @@ class _MainPageState extends State<MainPage>
   // LoginPage. (Do NOT push CaneVisionApp here - it is a MaterialApp, and
   // nesting one inside another causes the black screen.)
   Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Log Out',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: const Text('Are you sure you want to log out?',
-            style: TextStyle(fontSize: 14, color: Color(0xFF555555))),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Color(0xFF888888))),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Log Out',
-                style: TextStyle(
-                    color: Colors.redAccent, fontWeight: FontWeight.w600)),
-          ),
-        ],
-      ),
-    );
+    // Respect the "Confirm before logging out" setting
+    final needsConfirm = await AppSettings.confirmLogout();
+    if (!mounted) return;
+
+    bool? confirm = true;
+    if (needsConfirm) {
+      confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Log Out',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: const Text('Are you sure you want to log out?',
+              style: TextStyle(fontSize: 14, color: Color(0xFF555555))),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: Color(0xFF888888))),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Log Out',
+                  style: TextStyle(
+                      color: Colors.redAccent, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    }
 
     if (confirm != true || !mounted) return;
 
@@ -238,6 +251,8 @@ class _MainPageState extends State<MainPage>
     return PopScope(
       canPop: false,
       child: Scaffold(
+        key: _scaffoldKey,
+        drawer: AppDrawer(onLogout: _logout),
         backgroundColor: const Color(0xFFE8F8EF),
         body: SafeArea(
           child: Column(
@@ -270,6 +285,28 @@ class _MainPageState extends State<MainPage>
                           horizontal: 20, vertical: 16),
                       child: Row(
                         children: [
+                          // Hamburger button
+                          GestureDetector(
+                            onTap: () =>
+                                _scaffoldKey.currentState?.openDrawer(),
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              margin: const EdgeInsets.only(right: 10),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2))
+                                ],
+                              ),
+                              child: const Icon(Icons.menu,
+                                  size: 20, color: Color(0xFF1A1A1A)),
+                            ),
+                          ),
                           Container(
                             width: 44,
                             height: 44,
