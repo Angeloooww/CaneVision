@@ -16,27 +16,12 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage>
     with SingleTickerProviderStateMixin {
-  int _selectedTab = 0; // 0 = Scan, 1 = Farmers
-  int _selectedFarmerTab = 0; // 0 = Registered, 1 = New Farmer
-
   // Hamburger drawer
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   // Search
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-
-  // New Farmer form controllers
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _farmIdController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-  bool _isSaving = false;
-
-  // Scan tab — selected farmer
-  String? _selectedFarmerName;
-  String? _selectedFarmId;
-  String? _selectedFarmerDocId;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -63,10 +48,6 @@ class _MainPageState extends State<MainPage>
   void dispose() {
     _sheetController.dispose();
     _searchController.dispose();
-    _nameController.dispose();
-    _farmIdController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
     super.dispose();
   }
 
@@ -162,43 +143,6 @@ class _MainPageState extends State<MainPage>
     );
   }
 
-  // ── Save New Farmer ───────────────────────────────────────────
-  Future<void> _saveNewFarmer() async {
-    if (_nameController.text.trim().isEmpty ||
-        _farmIdController.text.trim().isEmpty ||
-        _emailController.text.trim().isEmpty ||
-        _phoneController.text.trim().isEmpty) {
-      _showSnackBar('Please fill in all fields.', isError: true);
-      return;
-    }
-
-    setState(() => _isSaving = true);
-
-    try {
-      await _firestore.collection('farmers').add({
-        'fullName': _nameController.text.trim(),
-        'farmId': _farmIdController.text.trim(),
-        'email': _emailController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'grade': '--',
-        'createdAt': FieldValue.serverTimestamp(),
-        'createdBy': _auth.currentUser?.uid ?? '',
-      });
-
-      _nameController.clear();
-      _farmIdController.clear();
-      _emailController.clear();
-      _phoneController.clear();
-
-      setState(() => _selectedFarmerTab = 0);
-      _showSnackBar('Farmer registered successfully!');
-    } catch (e) {
-      _showSnackBar('Failed to save farmer. Please try again.', isError: true);
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
   // ── Delete Farmer ─────────────────────────────────────────────
   Future<void> _deleteFarmer(String docId, String name) async {
     final confirm = await showDialog<bool>(
@@ -227,6 +171,39 @@ class _MainPageState extends State<MainPage>
       await _firestore.collection('farmers').doc(docId).delete();
       _showSnackBar('$name removed successfully.', isError: true);
     }
+  }
+
+  // ── Open Scan Page for a farmer ───────────────────────────────
+  void _openScan({
+    required String docId,
+    required String name,
+    required String farmId,
+  }) {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, animation, __) => ScanPage(
+          farmerName: name,
+          farmId: farmId,
+          farmerDocId: docId,
+        ),
+        transitionsBuilder: (_, animation, __, child) =>
+            FadeTransition(opacity: animation, child: child),
+        transitionDuration: const Duration(milliseconds: 250),
+      ),
+    );
+  }
+
+  void _openNewFarmer() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, animation, __) => const NewFarmerPage(),
+        transitionsBuilder: (_, animation, __, child) =>
+            FadeTransition(opacity: animation, child: child),
+        transitionDuration: const Duration(milliseconds: 250),
+      ),
+    );
   }
 
   void _showSnackBar(String msg, {bool isError = false}) {
@@ -441,30 +418,10 @@ class _MainPageState extends State<MainPage>
 
                     const SizedBox(height: 14),
 
-                    // ── Scan / Farmers Tab Buttons ────────────────────────
+                    // ── Farmers (single) tab button ───────────────────────
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _buildTabButton(
-                              label: 'Scan',
-                              icon: Icons.home_outlined,
-                              isActive: _selectedTab == 0,
-                              onTap: () => setState(() => _selectedTab = 0),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTabButton(
-                              label: 'Farmers',
-                              icon: Icons.people_outline,
-                              isActive: _selectedTab == 1,
-                              onTap: () => setState(() => _selectedTab = 1),
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: _buildFarmersHeaderButton(),
                     ),
 
                     const SizedBox(height: 16),
@@ -486,11 +443,7 @@ class _MainPageState extends State<MainPage>
                   child: Column(
                     children: [
                       _buildDragHandle(),
-                      Expanded(
-                        child: _selectedTab == 0
-                            ? _buildScanTab()
-                            : _buildFarmersTab(),
-                      ),
+                      Expanded(child: _buildFarmersTab()),
                     ],
                   ),
                 ),
@@ -527,160 +480,39 @@ class _MainPageState extends State<MainPage>
     );
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SCAN TAB — select a farmer then scan
-  // ════════════════════════════════════════════════════════════════
-  Widget _buildScanTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 6, 20, 2),
-          child: Text('Select Farmer',
+  // ── The single "Farmers" header button (always active) ────────
+  Widget _buildFarmersHeaderButton() {
+    return Container(
+      height: 46,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 6,
+              offset: const Offset(0, 2))
+        ],
+        border: Border.all(color: const Color(0xFF11BD51), width: 1.5),
+      ),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.people_outline, size: 18, color: Color(0xFF11BD51)),
+          SizedBox(width: 6),
+          Text('Farmers',
               style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                   color: Color(0xFF1A1A1A))),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
-          child: Text('Choose whose sugarcane will you be scanning',
-              style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
-        ),
-
-        const SizedBox(height: 14),
-
-        // Search bar
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: TextField(
-            controller: _searchController,
-            style:
-                const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
-            decoration: InputDecoration(
-              hintText: 'Search by name, Farm ID, or phone',
-              hintStyle:
-                  const TextStyle(fontSize: 12, color: Color(0xFFBBBBBB)),
-              prefixIcon: const Icon(Icons.search,
-                  color: Color(0xFFBBBBBB), size: 18),
-              filled: true,
-              fillColor: const Color(0xFFF7F7F7),
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 10),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 8),
-
-        // Farmer list — tap to go to ScanPage
-        Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _firestore
-                .collection('farmers')
-                .orderBy('createdAt', descending: false)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                    child: CircularProgressIndicator(
-                        color: Color(0xFF11BD51), strokeWidth: 2.5));
-              }
-              if (snapshot.hasError) {
-                return const Center(
-                    child: Text('Error loading farmers',
-                        style: TextStyle(color: Color(0xFF888888))));
-              }
-
-              final docs = snapshot.data?.docs ?? [];
-              final filtered = docs.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final name =
-                    (data['fullName'] ?? '').toString().toLowerCase();
-                final farmId =
-                    (data['farmId'] ?? '').toString().toLowerCase();
-                final phone =
-                    (data['phone'] ?? '').toString().toLowerCase();
-                return name.contains(_searchQuery) ||
-                    farmId.contains(_searchQuery) ||
-                    phone.contains(_searchQuery);
-              }).toList();
-
-              if (filtered.isEmpty) {
-                return const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.people_outline,
-                          size: 44, color: Color(0xFFCCCCCC)),
-                      SizedBox(height: 10),
-                      Text('No farmers yet',
-                          style: TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFFAAAAAA),
-                              fontWeight: FontWeight.w500)),
-                      SizedBox(height: 4),
-                      Text('Go to Farmers tab to add one',
-                          style: TextStyle(
-                              fontSize: 12, color: Color(0xFFCCCCCC))),
-                    ],
-                  ),
-                );
-              }
-
-              return ListView.separated(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 4),
-                itemCount: filtered.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                itemBuilder: (context, index) {
-                  final doc = filtered[index];
-                  final data = doc.data() as Map<String, dynamic>;
-                  return GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        PageRouteBuilder(
-                          pageBuilder: (_, animation, __) => ScanPage(
-                            farmerName: data['fullName'] ?? '',
-                            farmId: data['farmId'] ?? '',
-                            farmerDocId: doc.id,
-                          ),
-                          transitionsBuilder:
-                              (_, animation, __, child) =>
-                                  FadeTransition(
-                                      opacity: animation, child: child),
-                          transitionDuration:
-                              const Duration(milliseconds: 250),
-                        ),
-                      );
-                    },
-                    child: _buildFarmerTile(
-                      docId: doc.id,
-                      name: data['fullName'] ?? '',
-                      farmId: data['farmId'] ?? '',
-                      phone: data['phone'] ?? '',
-                      email: data['email'] ?? '',
-                      grade: data['grade'] ?? '--',
-                      showDelete: false,
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   // ════════════════════════════════════════════════════════════════
-  // FARMERS TAB — registered list + new farmer form
+  // FARMERS TAB — registered list (with Scan button) + New Farmer
   // ════════════════════════════════════════════════════════════════
   Widget _buildFarmersTab() {
     return Column(
@@ -714,26 +546,14 @@ class _MainPageState extends State<MainPage>
             child: Row(
               children: [
                 _buildFarmerTabPill(
-                  label: 'Registered Farmer',
-                  isActive: _selectedFarmerTab == 0,
-                  onTap: () => setState(() => _selectedFarmerTab = 0),
+                  label: 'Registered Farmers',
+                  isActive: true,
+                  onTap: () {},
                 ),
                 _buildFarmerTabPill(
                   label: 'New Farmer',
-                  isActive: _selectedFarmerTab == 1,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      PageRouteBuilder(
-                        pageBuilder: (_, animation, __) =>
-                            const NewFarmerPage(),
-                        transitionsBuilder: (_, animation, __, child) =>
-                            FadeTransition(opacity: animation, child: child),
-                        transitionDuration:
-                            const Duration(milliseconds: 250),
-                      ),
-                    );
-                  },
+                  isActive: false,
+                  onTap: _openNewFarmer,
                 ),
               ],
             ),
@@ -742,11 +562,7 @@ class _MainPageState extends State<MainPage>
 
         const SizedBox(height: 12),
 
-        Expanded(
-          child: _selectedFarmerTab == 0
-              ? _buildRegisteredList()
-              : _buildNewFarmerForm(),
-        ),
+        Expanded(child: _buildRegisteredList()),
       ],
     );
   }
@@ -794,6 +610,12 @@ class _MainPageState extends State<MainPage>
                     child: CircularProgressIndicator(
                         color: Color(0xFF11BD51), strokeWidth: 2.5));
               }
+              if (snapshot.hasError) {
+                return const Center(
+                    child: Text('Error loading farmers',
+                        style: TextStyle(color: Color(0xFF888888))));
+              }
+
               final docs = snapshot.data?.docs ?? [];
               final filtered = docs.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
@@ -845,8 +667,6 @@ class _MainPageState extends State<MainPage>
                     farmId: data['farmId'] ?? '',
                     phone: data['phone'] ?? '',
                     email: data['email'] ?? '',
-                    grade: data['grade'] ?? '--',
-                    showDelete: true,
                   );
                 },
               );
@@ -854,88 +674,6 @@ class _MainPageState extends State<MainPage>
           ),
         ),
       ],
-    );
-  }
-
-  // ── New Farmer Form ───────────────────────────────────────────
-  Widget _buildNewFarmerForm() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Farmer Name
-          _buildFormLabel('Farmer Name'),
-          const SizedBox(height: 6),
-          _buildFormField(
-              controller: _nameController,
-              hint: 'Enter your full name here',
-              keyboardType: TextInputType.name),
-
-          const SizedBox(height: 14),
-
-          // Farm ID
-          _buildFormLabel('Farm ID'),
-          const SizedBox(height: 6),
-          _buildFormField(
-              controller: _farmIdController,
-              hint: 'Enter your email here'),
-
-          const SizedBox(height: 14),
-
-          // Email
-          _buildFormLabel('Email'),
-          const SizedBox(height: 6),
-          _buildFormField(
-              controller: _emailController,
-              hint: 'Enter password here',
-              keyboardType: TextInputType.emailAddress),
-
-          const SizedBox(height: 14),
-
-          // Phone Number
-          _buildFormLabel('Phone number'),
-          const SizedBox(height: 6),
-          _buildFormField(
-              controller: _phoneController,
-              hint: 'Enter your organization ID here',
-              keyboardType: TextInputType.phone),
-
-          const SizedBox(height: 24),
-
-          // Begin Scan / Save Button
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              onPressed: _isSaving ? null : _saveNewFarmer,
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
-                  : const Icon(Icons.camera_alt_outlined, size: 20),
-              label: Text(
-                _isSaving ? 'Saving...' : 'Begin Scan',
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF11BD51),
-                foregroundColor: Colors.white,
-                disabledBackgroundColor:
-                    const Color(0xFF11BD51).withOpacity(0.6),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-        ],
-      ),
     );
   }
 
@@ -985,52 +723,6 @@ class _MainPageState extends State<MainPage>
     );
   }
 
-  Widget _buildTabButton({
-    required String label,
-    required IconData icon,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        height: 46,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 6,
-                offset: const Offset(0, 2))
-          ],
-          border: isActive
-              ? Border.all(color: const Color(0xFF11BD51), width: 1.5)
-              : Border.all(color: Colors.transparent),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon,
-                size: 18,
-                color: isActive
-                    ? const Color(0xFF11BD51)
-                    : const Color(0xFF888888)),
-            const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: isActive
-                        ? const Color(0xFF1A1A1A)
-                        : const Color(0xFF888888))),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildFarmerTabPill({
     required String label,
     required bool isActive,
@@ -1067,14 +759,13 @@ class _MainPageState extends State<MainPage>
     );
   }
 
+  // Farmer row: details on the left, Scan button + Delete on the right
   Widget _buildFarmerTile({
     required String docId,
     required String name,
     required String farmId,
     required String phone,
     required String email,
-    required String grade,
-    required bool showDelete,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 11),
@@ -1123,79 +814,49 @@ class _MainPageState extends State<MainPage>
               ],
             ),
           ),
-          // Grade Badge
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF11BD51),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(grade,
-                style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white)),
-          ),
-          if (showDelete) ...[
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _deleteFarmer(docId, name),
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFEEEE),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(Icons.delete_outline,
-                    size: 15, color: Colors.redAccent),
+
+          // Scan button (replaces the old grade badge)
+          GestureDetector(
+            onTap: () =>
+                _openScan(docId: docId, name: name, farmId: farmId),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF11BD51),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.camera_alt_outlined,
+                      size: 13, color: Colors.white),
+                  SizedBox(width: 4),
+                  Text('Scan',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
+                ],
               ),
             ),
-          ],
+          ),
+
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => _deleteFarmer(docId, name),
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFEEEE),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(Icons.delete_outline,
+                  size: 15, color: Colors.redAccent),
+            ),
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFormLabel(String label) {
-    return Text(label,
-        style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF333333)));
-  }
-
-  Widget _buildFormField({
-    required TextEditingController controller,
-    required String hint,
-    TextInputType? keyboardType,
-  }) {
-    return TextField(
-      controller: controller,
-      keyboardType: keyboardType,
-      style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A1A)),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle:
-            const TextStyle(fontSize: 12, color: Color(0xFFBBBBBB)),
-        filled: true,
-        fillColor: const Color(0xFFF7F7F7),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide:
-              BorderSide(color: Colors.grey.withOpacity(0.15), width: 1),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide:
-              const BorderSide(color: Color(0xFF11BD51), width: 1.5),
-        ),
       ),
     );
   }
