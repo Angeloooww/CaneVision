@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,6 +25,7 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _agreedToTerms = false;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -59,6 +61,11 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
+    if (!_agreedToTerms) {
+      _showError('Please agree to the Terms and Services to continue.');
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -80,16 +87,15 @@ class _LoginPageState extends State<LoginPage> {
 
       final data = doc.data()!;
 
-
       final role = (data['role'] ?? '').toString();
-        if (role == 'Admin') {
+      if (role == 'Admin') {
         await _auth.signOut();
         setState(() => _isLoading = false);
         _showError('Access denied.');
         return;
       }
 
-final status = (data['status'] ?? 'approved').toString();
+      final status = (data['status'] ?? 'approved').toString();
 
       if (status == 'pending') {
         await _auth.signOut();
@@ -331,6 +337,13 @@ final status = (data['status'] ?? 'approved').toString();
                     ),
                     const SizedBox(height: 16),
 
+                    // ── Terms and Services checkbox ──────────────────
+                    TermsCheckbox(
+                      value: _agreedToTerms,
+                      onChanged: (v) => setState(() => _agreedToTerms = v),
+                    ),
+                    const SizedBox(height: 14),
+
                     Row(
                       children: [
                         const Text("Don't have an account? ",
@@ -446,6 +459,143 @@ final status = (data['status'] ?? 'approved').toString();
               const BorderSide(color: Color(0xFF27AE60), width: 1.5),
         ),
       ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// TERMS AND SERVICES
+// ════════════════════════════════════════════════════════════════
+
+/// Shows the Terms and Services in a scrollable dialog.
+Future<void> showTermsDialog(BuildContext context) {
+  const heading = TextStyle(
+      fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A));
+  const body =
+      TextStyle(fontSize: 12, height: 1.5, color: Color(0xFF555555));
+
+  Widget section(String title, String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: heading),
+            const SizedBox(height: 3),
+            Text(text, style: body),
+          ],
+        ),
+      );
+
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Terms and Services',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              section('1. Acceptance of Terms',
+                  'By creating an account or using CaneVision, you agree to these Terms and Services. If you do not agree, please do not use the app.'),
+              section('2. Use of the App',
+                  'CaneVision is a sugarcane grading tool. You agree to use it only for lawful, work-related purposes and to scan only samples you are authorized to grade.'),
+              section('3. Accounts and Approval',
+                  'New accounts may require approval before access is granted. You are responsible for keeping your login credentials secure and for all activity under your account.'),
+              section('4. Farmer Information',
+                  'You may enter farmers\' names, Farm IDs, emails and phone numbers. You confirm you have permission to record this information and agree to use it only for grading and record-keeping.'),
+              section('5. Grading Results',
+                  'Grades are produced by an automated model and are meant to assist, not replace, professional judgment. Results may not always be accurate, and you are responsible for decisions made based on them.'),
+              section('6. Privacy and Data',
+                  'Account, farmer and scan data are stored in our cloud database and used to operate the app. We do not sell your personal data.'),
+              section('7. Suspension or Termination',
+                  'Accounts that misuse the app or violate these terms may be suspended or removed.'),
+              section('8. Changes to These Terms',
+                  'We may update these terms from time to time. Continued use of the app means you accept the updated terms.'),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('I Understand',
+              style: TextStyle(
+                  color: Color(0xFF11BD51), fontWeight: FontWeight.w600)),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Checkbox row: "I agree to the Terms and Services" (link opens the terms).
+class TermsCheckbox extends StatefulWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const TermsCheckbox({
+    super.key,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  State<TermsCheckbox> createState() => _TermsCheckboxState();
+}
+
+class _TermsCheckboxState extends State<TermsCheckbox> {
+  late final TapGestureRecognizer _tap;
+
+  @override
+  void initState() {
+    super.initState();
+    _tap = TapGestureRecognizer()..onTap = () => showTermsDialog(context);
+  }
+
+  @override
+  void dispose() {
+    _tap.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: Checkbox(
+            value: widget.value,
+            activeColor: const Color(0xFF11BD51),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+            onChanged: (v) => widget.onChanged(v ?? false),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              style: const TextStyle(fontSize: 12, color: Color(0xFF555555)),
+              children: [
+                const TextSpan(text: 'I agree to the '),
+                TextSpan(
+                  text: 'Terms and Services',
+                  recognizer: _tap,
+                  style: const TextStyle(
+                    color: Color(0xFF11BD51),
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
