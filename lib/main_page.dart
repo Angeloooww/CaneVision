@@ -229,7 +229,7 @@ class _MainPageState extends State<MainPage>
       canPop: false,
       child: Scaffold(
         key: _scaffoldKey,
-        drawer: AppDrawer(onLogout: _logout),
+        endDrawer: AppDrawer(onLogout: _logout), // opens from the right
         backgroundColor: const Color(0xFFE8F8EF),
         body: SafeArea(
           child: Column(
@@ -262,28 +262,7 @@ class _MainPageState extends State<MainPage>
                           horizontal: 20, vertical: 16),
                       child: Row(
                         children: [
-                          // Hamburger button
-                          GestureDetector(
-                            onTap: () =>
-                                _scaffoldKey.currentState?.openDrawer(),
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              margin: const EdgeInsets.only(right: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                boxShadow: [
-                                  BoxShadow(
-                                      color: Colors.black.withOpacity(0.06),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2))
-                                ],
-                              ),
-                              child: const Icon(Icons.menu,
-                                  size: 20, color: Color(0xFF1A1A1A)),
-                            ),
-                          ),
+                          // Logo (left)
                           Container(
                             width: 44,
                             height: 44,
@@ -305,11 +284,13 @@ class _MainPageState extends State<MainPage>
                                   fontWeight: FontWeight.bold,
                                   color: Color(0xFF1A1A1A))),
                           const Spacer(),
+                          // Hamburger button (right)
                           GestureDetector(
-                            onTap: _logout,
+                            onTap: () =>
+                                _scaffoldKey.currentState?.openEndDrawer(),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 8),
+                              width: 40,
+                              height: 40,
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(10),
@@ -320,18 +301,8 @@ class _MainPageState extends State<MainPage>
                                       offset: const Offset(0, 2))
                                 ],
                               ),
-                              child: const Row(
-                                children: [
-                                  Icon(Icons.logout,
-                                      size: 16, color: Colors.redAccent),
-                                  SizedBox(width: 5),
-                                  Text('Logout',
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.redAccent)),
-                                ],
-                              ),
+                              child: const Icon(Icons.menu,
+                                  size: 20, color: Color(0xFF1A1A1A)),
                             ),
                           ),
                         ],
