@@ -386,15 +386,7 @@ class _MainPageState extends State<MainPage>
                         },
                       ),
                     ),
-
-                    const SizedBox(height: 14),
-
-                    // ── Farmers (single) tab button ───────────────────────
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: _buildFarmersHeaderButton(),
-                    ),
-
+                    
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -447,37 +439,6 @@ class _MainPageState extends State<MainPage>
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  // ── The single "Farmers" header button (always active) ────────
-  Widget _buildFarmersHeaderButton() {
-    return Container(
-      height: 46,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 6,
-              offset: const Offset(0, 2))
-        ],
-        border: Border.all(color: const Color(0xFF11BD51), width: 1.5),
-      ),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.people_outline, size: 18, color: Color(0xFF11BD51)),
-          SizedBox(width: 6),
-          Text('Farmers',
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1A1A1A))),
-        ],
       ),
     );
   }
