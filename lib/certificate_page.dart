@@ -1,11 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:file_saver/file_saver.dart';
 import 'analysis_page.dart'; // imports kGradeLookup and gradeQuality
 
 class CertificatePage extends StatefulWidget {
@@ -17,6 +22,7 @@ class CertificatePage extends StatefulWidget {
   final int trashDiscount;
   final String remarkCode;
   final String remarkFull;
+
   /// Optional: local file path of the scanned sugarcane image.
   /// When provided the image is shown on the certificate and uploaded
   /// to Firebase Storage so the admin dashboard can display it.
@@ -54,12 +60,14 @@ class _CertificatePageState extends State<CertificatePage> {
   // ── Email sending state ──────────────────────────────────────
   bool _isSending = false;
 
+  // ── PDF download state ───────────────────────────────────────
+  bool _isDownloading = false;
+
   // EmailJS settings — paste yours from the EmailJS dashboard
   static const String _emailServiceId = 'service_y948yha';
   static const String _emailTemplateId = 'template_bbk1blh';
   static const String _emailPublicKey = 'iMcjpWhNeoAunB5k_';
   static const String _emailPrivateKey = 'dcIRLGbO-5mTBb-kFHruN';
-
 
   @override
   void initState() {
@@ -220,6 +228,368 @@ class _CertificatePageState extends State<CertificatePage> {
           .showSnackBar(_snackBar('Send failed: $e'));
     } finally {
       if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // PDF DOWNLOAD
+  // ════════════════════════════════════════════════════════════════
+
+  /// The default PDF font only supports basic Latin characters, so
+  /// replace common "fancy" characters and drop anything unsupported.
+  String _pdfSafe(String text) {
+    const replacements = {
+      '\u2013': '-',
+      '\u2014': '-',
+      '\u2018': "'",
+      '\u2019': "'",
+      '\u201C': '"',
+      '\u201D': '"',
+      '\u2026': '...',
+      '\u2022': '-',
+      '\u00A0': ' ',
+    };
+    var out = text;
+    replacements.forEach((k, v) => out = out.replaceAll(k, v));
+    return String.fromCharCodes(out.runes.where((r) => r < 256));
+  }
+
+  pw.Widget _pdfSectionTitle(String title, PdfColor color) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 8),
+      child: pw.Text(
+        _pdfSafe(title),
+        style: pw.TextStyle(
+            fontSize: 12, fontWeight: pw.FontWeight.bold, color: color),
+      ),
+    );
+  }
+
+  pw.Widget _pdfInfoRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 5),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(_pdfSafe(label),
+              style: pw.TextStyle(
+                  fontSize: 10, color: PdfColor.fromHex('#888888'))),
+          pw.Text(_pdfSafe(value),
+              style: pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColor.fromHex('#1A1A1A'))),
+        ],
+      ),
+    );
+  }
+
+  /// Reads the scanned photo, shrinks it, and re-encodes it as PNG so the
+  /// PDF library can always embed it (any camera format, any size).
+  Future<Uint8List?> _loadPhotoForPdf() async {
+    final path = widget.imagePath;
+    debugPrint('PDF photo path: $path');
+    if (path == null || path.isEmpty) return null;
+    try {
+      final file = File(path);
+      if (!await file.exists()) {
+        debugPrint('PDF photo: file does not exist');
+        return null;
+      }
+      final raw = await file.readAsBytes();
+      final codec = await ui.instantiateImageCodec(raw, targetWidth: 1000);
+      final frame = await codec.getNextFrame();
+      final data =
+          await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      return data?.buffer.asUint8List();
+    } catch (e) {
+      debugPrint('PDF photo error: $e');
+      return null;
+    }
+  }
+
+  Future<Uint8List> _buildCertificatePdf() async {
+  final green = PdfColor.fromHex('#11BD51');
+  final dark = PdfColor.fromHex('#1A1A1A');
+  final grey = PdfColor.fromHex('#888888');
+  final amber = PdfColor.fromHex('#F39C12');
+  final lineColor = PdfColor.fromHex('#E0E0E0');
+
+  final info = kGradeLookup[widget.grade.toUpperCase()] ??
+      kGradeLookup['FF']!;
+  final advisory = _pdfSafe(info['advisory'] as String);
+  final certId = _savedCertId.isNotEmpty ? _savedCertId : 'N/A';
+
+  // Scanned photo (optional)
+  pw.MemoryImage? photo;
+  final photoBytes = await _loadPhotoForPdf();
+  if (photoBytes != null) {
+    photo = pw.MemoryImage(photoBytes);
+  }
+
+  // App logo (optional)
+  pw.MemoryImage? logo;
+  try {
+    final data = await DefaultAssetBundle.of(context)
+        .load('assets/images/logo.png');
+    logo = pw.MemoryImage(data.buffer.asUint8List());
+  } catch (_) {}
+
+  final doc = pw.Document(
+    title: 'Certificate of Quality - $certId',
+    author: 'CaneVision',
+  );
+
+  const double margin = 28;
+  final double contentWidth = PdfPageFormat.a4.width - (margin * 2);
+
+  doc.addPage(
+    pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(margin),
+      build: (ctx) => pw.FittedBox(
+        // Safety net: if content is ever taller than the page,
+        // it shrinks to fit instead of spilling onto page 2.
+        fit: pw.BoxFit.scaleDown,
+        alignment: pw.Alignment.topCenter,
+        child: pw.SizedBox(
+          width: contentWidth,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // ── Header ───────────────────────────────────
+              pw.Row(
+                children: [
+                  if (logo != null)
+                    pw.Container(
+                      width: 32,
+                      height: 32,
+                      margin: const pw.EdgeInsets.only(right: 8),
+                      child: pw.Image(logo, fit: pw.BoxFit.cover),
+                    ),
+                  pw.Text('CaneVision',
+                      style: pw.TextStyle(
+                          fontSize: 16,
+                          fontWeight: pw.FontWeight.bold,
+                          color: dark)),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+              pw.Center(
+                child: pw.Column(
+                  children: [
+                    pw.Text('Certificate of Quality',
+                        style: pw.TextStyle(
+                            fontSize: 20,
+                            fontWeight: pw.FontWeight.bold,
+                            color: dark)),
+                    pw.SizedBox(height: 3),
+                    pw.Text('Sugarcane Quality Assessment Report',
+                        style: pw.TextStyle(fontSize: 10, color: grey)),
+                    pw.SizedBox(height: 3),
+                    pw.Text('Certificate ID: $certId',
+                        style: pw.TextStyle(
+                            fontSize: 9,
+                            color: PdfColor.fromHex('#AAAAAA'))),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 8),
+              pw.Divider(color: lineColor),
+              pw.SizedBox(height: 6),
+
+              // ── Scanned photo (centered) ─────────────────
+              if (photo != null) ...[
+                pw.Container(
+                  width: contentWidth,
+                  height: 150,
+                  alignment: pw.Alignment.center,
+                  color: PdfColor.fromHex('#F0FBF5'),
+                  child: pw.Image(photo, fit: pw.BoxFit.contain),
+                ),
+                pw.SizedBox(height: 3),
+                pw.Center(
+                  child: pw.Text('Scanned Sugarcane',
+                      style: pw.TextStyle(fontSize: 8, color: grey)),
+                ),
+                pw.SizedBox(height: 8),
+                pw.Divider(color: lineColor),
+                pw.SizedBox(height: 6),
+              ],
+
+              // ── Farmer info + Graded by (side by side) ───
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        _pdfSectionTitle('Farmer Information', dark),
+                        _pdfInfoRow('Name', widget.farmerName),
+                        _pdfInfoRow('Farm ID', widget.farmId),
+                        _pdfInfoRow('Inspection Date', _today),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(width: 24),
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        _pdfSectionTitle('Graded By', dark),
+                        _pdfInfoRow('Quality Grader', _graderName),
+                        _pdfInfoRow('Email', _graderEmail),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 4),
+              pw.Divider(color: lineColor),
+              pw.SizedBox(height: 6),
+
+              // ── Grade banner ─────────────────────────────
+              pw.Container(
+                width: contentWidth,
+                padding: const pw.EdgeInsets.symmetric(
+                    vertical: 10, horizontal: 16),
+                decoration: pw.BoxDecoration(
+                  color: green,
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Text(_pdfSafe(widget.grade),
+                        style: pw.TextStyle(
+                            fontSize: 26,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.white)),
+                    pw.SizedBox(width: 12),
+                    pw.Text(_pdfSafe(widget.quality),
+                        style: const pw.TextStyle(
+                            fontSize: 12, color: PdfColors.white)),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 8),
+
+              // ── Quality parameters ───────────────────────
+              _pdfSectionTitle('Quality Parameters', green),
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Trash Discount',
+                            style: pw.TextStyle(fontSize: 9, color: grey)),
+                        pw.SizedBox(height: 2),
+                        pw.Text('${widget.trashDiscount}%',
+                            style: pw.TextStyle(
+                                fontSize: 18,
+                                fontWeight: pw.FontWeight.bold,
+                                color: dark)),
+                      ],
+                    ),
+                  ),
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Remarks',
+                            style: pw.TextStyle(fontSize: 9, color: grey)),
+                        pw.SizedBox(height: 2),
+                        pw.Text(_pdfSafe(widget.remarkCode),
+                            style: pw.TextStyle(
+                                fontSize: 18,
+                                fontWeight: pw.FontWeight.bold,
+                                color: dark)),
+                        pw.SizedBox(height: 2),
+                        pw.Text(_pdfSafe(widget.remarkFull),
+                            style: pw.TextStyle(fontSize: 9, color: grey)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 8),
+              pw.Divider(color: lineColor),
+              pw.SizedBox(height: 6),
+
+              // ── Operational advisory ─────────────────────
+              _pdfSectionTitle('Operational Advisory', amber),
+              pw.Container(
+                width: contentWidth,
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  color: PdfColor.fromHex('#FFFBF0'),
+                  borderRadius: pw.BorderRadius.circular(6),
+                  border: pw.Border.all(color: amber, width: 0.8),
+                ),
+                child: pw.Text(advisory,
+                    style: pw.TextStyle(
+                        fontSize: 9,
+                        color: PdfColor.fromHex('#555555'),
+                        lineSpacing: 2)),
+              ),
+              pw.SizedBox(height: 12),
+
+              // ── Footer ───────────────────────────────────
+              pw.Center(
+                child: pw.Text(
+                  'This certificate is digitally generated and verified.\nGenerated on $_timestamp',
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColor.fromHex('#AAAAAA'),
+                      lineSpacing: 2),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  return doc.save();
+}
+
+  /// Builds the PDF and lets the user choose where to save it.
+  Future<void> _downloadCertificate() async {
+    if (_isDownloading) return;
+    setState(() => _isDownloading = true);
+
+    try {
+      final bytes = await _buildCertificatePdf();
+
+      final safeFarmer =
+          widget.farmerName.trim().replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_');
+      final idPart = _savedCertId.isNotEmpty
+          ? _savedCertId
+          : DateTime.now().millisecondsSinceEpoch.toString();
+      final fileName = 'Certificate_${safeFarmer}_$idPart';
+
+      await FileSaver.instance.saveAs(
+        name: fileName,
+        bytes: bytes,
+        ext: 'pdf',
+        mimeType: MimeType.pdf,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(_snackBar('Certificate PDF saved.'));
+    } catch (e) {
+      debugPrint('PDF download error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(_snackBar('Download failed: $e'));
+    } finally {
+      if (mounted) setState(() => _isDownloading = false);
     }
   }
 
@@ -614,10 +984,12 @@ class _CertificatePageState extends State<CertificatePage> {
                           children: [
                             _buildActionButton(
                               icon: Icons.download_outlined,
-                              label: 'Download Certificate',
-                              onTap: () => ScaffoldMessenger.of(context)
-                                  .showSnackBar(
-                                      _snackBar('Download feature coming soon!')),
+                              label: _isDownloading
+                                  ? 'Downloading…'
+                                  : 'Download Certificate',
+                              onTap: _isDownloading
+                                  ? () {}
+                                  : _downloadCertificate,
                             ),
                             const SizedBox(height: 10),
                             _buildActionButton(
@@ -1064,5 +1436,4 @@ class _CertificatePageState extends State<CertificatePage> {
       ),
     );
   }
-
 }

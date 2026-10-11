@@ -193,6 +193,9 @@ class _ScanPageState extends State<ScanPage> {
   Future<void> _analyzeImage() async {
     if (_selectedImage == null) return;
 
+    // Keep the photo path so it can be passed on to the certificate
+    final String photoPath = _selectedImage!.path;
+
     setState(() => _isProcessing = true);
 
     final result = await _runInference(_selectedImage!);
@@ -221,6 +224,7 @@ class _ScanPageState extends State<ScanPage> {
               farmId: widget.farmId,
               farmerDocId: widget.farmerDocId,
               grade: grade,
+              imagePath: photoPath, // ← scanned photo
             ),
             transitionsBuilder: (_, animation, __, child) =>
                 FadeTransition(opacity: animation, child: child),

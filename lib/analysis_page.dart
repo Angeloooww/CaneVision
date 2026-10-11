@@ -31,12 +31,18 @@ class AnalysisPage extends StatelessWidget {
   final String farmerDocId;
   final String grade;
 
+  /// Local file path of the scanned sugarcane photo.
+  /// Passed on to CertificatePage so the photo appears on the
+  /// certificate, in the PDF, and in the admin dashboard.
+  final String? imagePath;
+
   const AnalysisPage({
     super.key,
     required this.farmerName,
     required this.farmId,
     required this.farmerDocId,
     required this.grade,
+    this.imagePath,
   });
 
   @override
@@ -292,6 +298,7 @@ class AnalysisPage extends StatelessWidget {
                                   trashDiscount: trashDiscount,
                                   remarkCode: remarkCode,
                                   remarkFull: remarkFull,
+                                  imagePath: imagePath, // ← scanned photo
                                 ),
                                 transitionsBuilder: (_, animation, __, child) =>
                                     FadeTransition(opacity: animation, child: child),
