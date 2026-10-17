@@ -70,6 +70,8 @@ flutter:
     - assets/images/logo.jpeg
     - assets/images/logo.png
     - assets/models/canevision_v1_surgical_resnet.tflite
+    - assets/models/sugarcane_grader.tflite
+    - assets/models/labels.txt
 
   # To add assets to your application, add an assets section, like this:
   # assets:

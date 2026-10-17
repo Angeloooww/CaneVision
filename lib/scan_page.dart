@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -28,22 +27,7 @@ class _ScanPageState extends State<ScanPage> {
   final ImagePicker _picker = ImagePicker();
   File? _selectedImage;
   bool _isProcessing = false;
-
-  // ── TFLite config ─────────────────────────────────────────────
-  // Model is a ResNet50-based classifier with 6 output classes.
-  // Input:  [1, 224, 224, 3]  float32  (ResNet50 preprocessing)
-  // Output: [1, 6]            float32  (softmax probabilities)
-  static const int _inputSize = 224;
-
-  // Class labels — must match your training label order
-  static const List<String> _classLabels = [
-    'FA', // index 0
-    'FB', // index 1
-    'FC', // index 2
-    'FD', // index 3
-    'FE', // index 4
-    'FF', // index 5
-  ];
+  ImageSource? _lastSource; // remembers camera/gallery for "Scan Again"
 
   @override
   void initState() {
@@ -58,46 +42,10 @@ class _ScanPageState extends State<ScanPage> {
     }
   }
 
-  // ── Pre-process image → [1, 224, 224, 3] float32 tensor ──────
-  // Uses ResNet50 Keras preprocess_input: subtract ImageNet channel means.
-  Float32List _preprocessImage(File imageFile) {
-    final rawBytes = imageFile.readAsBytesSync();
-    final img.Image? decoded = img.decodeImage(rawBytes);
-    if (decoded == null) throw Exception('Could not decode image');
-
-    final image =
-        img.copyResize(decoded, width: _inputSize, height: _inputSize);
-
-    final input = Float32List(_inputSize * _inputSize * 3);
-    int idx = 0;
-    for (int y = 0; y < _inputSize; y++) {
-      for (int x = 0; x < _inputSize; x++) {
-        final pixel = image.getPixel(x, y);
-        input[idx++] = pixel.r.toDouble() - 123.68;
-        input[idx++] = pixel.g.toDouble() - 116.779;
-        input[idx++] = pixel.b.toDouble() - 103.939;
-      }
-    }
-    return input;
-  }
-
-  // ── Build nested List for tflite_flutter input ────────────────
-  List<List<List<List<double>>>> _buildInputTensor(Float32List flat) {
-    return List.generate(
-      1,
-      (_) => List.generate(
-        _inputSize,
-        (y) => List.generate(_inputSize, (x) {
-          final base = (y * _inputSize + x) * 3;
-          return [flat[base], flat[base + 1], flat[base + 2]];
-        }),
-      ),
-    );
-  }
-
-  // ── Run on-device TFLite inference ───────────────────────────
-  Future<Map<String, dynamic>?> _runInference(File imageFile) async {
-    // Ensure the model is loaded via ModelService (singleton)
+  // ── Run on-device TFLite inference via ModelService ──────────
+  // Preprocessing (320x320, RGB, raw 0-255), temperature calibration
+  // and grouping all happen inside ModelService.classify().
+  Future<GradeResult?> _runInference(File imageFile) async {
     if (!ModelService().isLoaded) {
       await ModelService().loadModel();
       if (!ModelService().isLoaded) {
@@ -107,52 +55,16 @@ class _ScanPageState extends State<ScanPage> {
     }
 
     try {
-      final flat = _preprocessImage(imageFile);
-      final inputTensor = _buildInputTensor(flat);
+      final decoded = img.decodeImage(imageFile.readAsBytesSync());
+      if (decoded == null) throw Exception('Could not decode image');
 
-      final outputTensor = List.generate(
-        1,
-        (_) => List.filled(_classLabels.length, 0.0),
-      );
+      // Fixes rotated phone photos (EXIF orientation)
+      final oriented = img.bakeOrientation(decoded);
 
-      ModelService().interpreter.run(inputTensor, outputTensor);
-
-      final probabilities = outputTensor[0];
-
-      int topIndex = 0;
-      double topProb = probabilities[0];
-      for (int i = 1; i < probabilities.length; i++) {
-        if (probabilities[i] > topProb) {
-          topProb = probabilities[i];
-          topIndex = i;
-        }
-      }
-
-      final predictions = List.generate(
-        _classLabels.length,
-        (i) => {'class': _classLabels[i], 'confidence': probabilities[i]},
-      )..sort(
-          (a, b) =>
-              (b['confidence'] as double).compareTo(a['confidence'] as double),
-        );
-
-      return {
-        'predictions': predictions,
-        'topClass': _classLabels[topIndex],
-        'topConfidence': topProb,
-      };
+      return ModelService().classify(oriented);
     } catch (e) {
       _showError('Inference error: $e');
       return null;
-    }
-  }
-
-  // ── Parse grade from inference result ────────────────────────
-  String _parseGrade(Map<String, dynamic> result) {
-    try {
-      return (result['topClass'] as String? ?? 'N/A').toUpperCase();
-    } catch (_) {
-      return 'N/A';
     }
   }
 
@@ -165,6 +77,7 @@ class _ScanPageState extends State<ScanPage> {
         preferredCameraDevice: CameraDevice.rear,
       );
       if (photo != null) {
+        _lastSource = ImageSource.camera;
         setState(() => _selectedImage = File(photo.path));
         _showImagePreview();
       }
@@ -181,6 +94,7 @@ class _ScanPageState extends State<ScanPage> {
         imageQuality: 85,
       );
       if (image != null) {
+        _lastSource = ImageSource.gallery;
         setState(() => _selectedImage = File(image.path));
         _showImagePreview();
       }
@@ -201,7 +115,14 @@ class _ScanPageState extends State<ScanPage> {
     final result = await _runInference(_selectedImage!);
 
     if (result != null && mounted) {
-      final grade = _parseGrade(result);
+      // Top class is "non canes": don't save a grade or make a certificate
+      if (result.label == 'Not sugarcane') {
+        setState(() => _isProcessing = false);
+        await _showNotSugarcaneDialog();
+        return;
+      }
+
+      final grade = result.label; // "FA".."FF" or a group like "FC/FD"
 
       // Save grade to Firestore
       await FirebaseFirestore.instance
@@ -234,6 +155,106 @@ class _ScanPageState extends State<ScanPage> {
       }
     } else {
       setState(() => _isProcessing = false);
+    }
+  }
+
+  // ── "Not sugarcane" pop-up with Scan Again button ────────────
+  Future<void> _showNotSugarcaneDialog() async {
+    if (!mounted) return;
+
+    final bool? scanAgain = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.warning_amber_rounded,
+                  color: Colors.redAccent, size: 34),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Not Sugarcane',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A1A)),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'This photo is not a sugarcane. Please scan again using a clear photo of the sugarcane bundle.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 13, color: Color(0xFF666666), height: 1.5),
+            ),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF888888),
+                    side: const BorderSide(color: Color(0xFFDDDDDD)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Cancel',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Scan Again',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF11BD51),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    // Clear the rejected photo either way
+    setState(() => _selectedImage = null);
+
+    // Scan Again → reopen the same source (camera or gallery)
+    if (scanAgain == true) {
+      if (_lastSource == ImageSource.gallery) {
+        await _uploadPhoto();
+      } else {
+        await _takePhoto();
+      }
     }
   }
 

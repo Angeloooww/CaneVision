@@ -12,7 +12,7 @@ const Map<String, Map<String, dynamic>> kGradeLookup = {
   'FF': {'trash': 5,  'code': 'Dc',    'remark': 'Dirty canes',                                  'advisory': 'Investigate harvesting conditions and introduce corrective actions like cleaning stations and stricter field supervision.'},
 };
 
-// Returns quality label per grade
+// Returns quality label per single grade
 String gradeQuality(String grade) {
   switch (grade) {
     case 'FA': return 'Excellent';
@@ -25,10 +25,23 @@ String gradeQuality(String grade) {
   }
 }
 
+/// Splits a grade string such as "FC" or "FC/FD" into valid grade keys.
+List<String> parseGradeParts(String grade) {
+  return grade
+      .toUpperCase()
+      .split('/')
+      .map((e) => e.trim())
+      .where((e) => kGradeLookup.containsKey(e))
+      .toList();
+}
+
 class AnalysisPage extends StatelessWidget {
   final String farmerName;
   final String farmId;
   final String farmerDocId;
+
+  /// Single grade ("FA".."FF") or a group when the model is unsure
+  /// between neighbours ("FA/FB", "FC/FD", "FE/FF").
   final String grade;
 
   /// Local file path of the scanned sugarcane photo.
@@ -47,14 +60,23 @@ class AnalysisPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Resolve values from lookup — default to FF if grade not found
     final gradeKey = grade.toUpperCase();
-    final info = kGradeLookup[gradeKey] ?? kGradeLookup['FF']!;
+    final parts = parseGradeParts(gradeKey);
+    final bool isGroup = parts.length > 1;
+
+    // For a group (e.g. FC/FD) the discount, remarks and advisory use the
+    // LOWER grade (the last one in the group). To use the better grade
+    // instead, change `parts.last` to `parts.first`.
+    final String basisKey = parts.isNotEmpty ? parts.last : 'FF';
+
+    final info = kGradeLookup[basisKey]!;
     final int trashDiscount = info['trash'] as int;
-    final String remarkCode  = info['code'] as String;
-    final String remarkFull  = info['remark'] as String;
-    final String advisory    = info['advisory'] as String;
-    final String quality     = gradeQuality(gradeKey);
+    final String remarkCode = info['code'] as String;
+    final String remarkFull = info['remark'] as String;
+    final String advisory = info['advisory'] as String;
+    final String quality = isGroup
+        ? parts.map(gradeQuality).join(' / ')
+        : gradeQuality(basisKey);
 
     return Scaffold(
       backgroundColor: const Color(0xFFE8F8EF),
@@ -190,28 +212,71 @@ class AnalysisPage extends StatelessWidget {
                                 color: Color(0xFF11BD51), size: 26),
                           ),
                           const SizedBox(width: 14),
-                          Text(gradeKey,
-                              style: const TextStyle(
-                                  fontSize: 42,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1A1A1A))),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(gradeKey,
+                                  style: const TextStyle(
+                                      fontSize: 42,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1A1A1A))),
+                            ),
+                          ),
                         ],
                       ),
 
                       const SizedBox(height: 8),
 
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text('Quality:  ',
                               style: TextStyle(
                                   fontSize: 14, color: Color(0xFF555555))),
-                          Text(quality,
-                              style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF11BD51))),
+                          Expanded(
+                            child: Text(quality,
+                                style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF11BD51))),
+                          ),
                         ],
                       ),
+
+                      // ── Group note (only when the result is a range) ──
+                      if (isGroup) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F7FF),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: const Color(0xFF3B82F6).withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.info_outline,
+                                  size: 15, color: Color(0xFF3B82F6)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'The scan is between ${parts.join(' and ')}. '
+                                  'Trash discount and remarks below use $basisKey '
+                                  '(the lower grade). Retake the photo for a clearer result.',
+                                  style: const TextStyle(
+                                      fontSize: 11.5,
+                                      color: Color(0xFF555555),
+                                      height: 1.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
 
                       const SizedBox(height: 24),
                       const Divider(color: Color(0xFFF0F0F0)),
